@@ -1,0 +1,40 @@
+services:
+  okinawa-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: okinawa-tour-tracker
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    shm_size: "2gb"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Taipei
+      - PYTHONUNBUFFERED=1
+
+  # 可選：若需要地端直接啟動 n8n 進行排程監控
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: okinawa-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=Asia/Taipei
+      - TZ=Asia/Taipei
+    volumes:
+      - ./data/n8n_data:/home/node/.n8n
+    depends_on:
+      - okinawa-tracker

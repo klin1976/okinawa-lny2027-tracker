@@ -1,0 +1,55 @@
+common_filters:
+  destination_keywords:
+    - "沖繩"
+    - "琉球"
+    - "OKA"
+  departure_date_range:
+    start: "2027-02-01"
+    end: "2027-02-14"
+  max_days: 5
+  departure_airports:
+    - "TPE"
+    - "KHH"
+    - "ALL"
+
+concurrency:
+  max_concurrent_agencies: 1
+  jitter_min_seconds: 2.0
+  jitter_max_seconds: 4.5
+
+agencies:
+  lion:
+    name: "雄獅旅遊"
+    enabled: true
+    adapter_class: "LionAdapter"
+    search_url: "https://travel.liontravel.com/search"
+    api_pattern: "NormGroupList|SearchGroup"
+    timeout_seconds: 30
+  cola:
+    name: "可樂旅遊"
+    enabled: true
+    adapter_class: "ColaAdapter"
+    search_url: "https://www.colatour.com.tw/C10A_TourList/C10A01_Search.aspx"
+    api_pattern: "TourSearch"
+    timeout_seconds: 30
+  settour:
+    name: "東南旅遊"
+    enabled: true
+    adapter_class: "SettourAdapter"
+    search_url: "https://trip.settour.com.tw/search"
+    api_pattern: "prodSearch"
+    timeout_seconds: 30
+  richmont:
+    name: "山富旅遊"
+    enabled: true
+    adapter_class: "RichmontAdapter"
+    search_url: "https://www.travel4u.com.tw/group/"
+    api_pattern: "/group/"
+    timeout_seconds: 30
+  fourp:
+    name: "世邦旅遊"
+    enabled: true
+    adapter_class: "FourPAdapter"
+    search_url: "https://www.4p.com.tw/tour/"
+    api_pattern: "search"
+    timeout_seconds: 30

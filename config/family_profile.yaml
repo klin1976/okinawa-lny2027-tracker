@@ -1,0 +1,61 @@
+family_name: "2027沖繩春節家族團"
+target_dates:
+  earliest_departure: "2027-02-04"
+  latest_return: "2027-02-11"
+  max_days: 5
+
+# 成員明細（系統會依年齡自動對應日本佔床法規與長輩條款）
+members:
+  - role: "adult"
+    count: 6
+    age_note: "一般成人"
+    require_bed: true
+    require_flight_seat: true
+  - role: "senior"
+    count: 1
+    age: 70
+    require_bed: true
+    require_flight_seat: true
+  - role: "child"
+    count: 1
+    age: 10
+    require_bed: true            # 日本規定滿6歲強制佔床
+    require_flight_seat: true
+  - role: "child"
+    count: 1
+    age: 8
+    require_bed: true
+    require_flight_seat: true
+  - role: "child"
+    count: 1
+    age: 2                       # 滿2歲需機位；未滿6歲可優先適用「兒童不佔床」
+    require_bed: false
+    require_flight_seat: true
+  # 若有未滿2歲嬰兒可加入 role: "infant", age: 1, require_bed: false, require_flight_seat: false
+
+# 費用估算預設值（當旅行社頁面未標明特定欄位時的保守補位值，系統會標記 is_estimated=true）
+defaults:
+  tip_per_day_twd: 300           # 日本團常見每日小費
+  tip_exempt_under_age: 2        # 未滿2歲嬰兒通常免收小費
+  fallback_child_no_bed_diff: -3000
+  fallback_infant_price: 6000
+  fallback_single_room_supplement: 12000
+
+# 房間分配策略
+rooming:
+  prefer_triple_room_for_odd_pax: true   # 佔床總人數為奇數時，優先檢查行程是否允許三人房/加床；若不允許才加計單人房差
+
+# 告警與篩選門檻
+alerts:
+  price_drop_per_adult_twd: 1500
+  price_drop_family_total_twd: 10000
+  seat_buffer: 4                 # 剩餘機位 <= (全家族需機位人數 + 4) 即發低機位預警
+
+# 綜合性價比評分權重（用於除總價外的綜合推薦排序）
+scoring_weights:
+  avoid_shopping_stop_bonus: 15
+  no_hotel_change_bonus: 10
+  early_out_late_back_bonus: 12
+  kid_friendly_attraction_bonus: 8
+  senior_restriction_penalty: -5
+  too_many_self_paid_meals_penalty: -5   # 自理餐超過 4 餐扣分
