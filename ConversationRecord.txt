@@ -53,3 +53,57 @@
 
 【AI 回應】
 完成專案關閉結算，自動更新對話紀錄（ConversationRecord.txt / ConversationRecord.md），清理 Swarm Workers，並自動推送最新變更至 GitHub 遠端儲存庫。
+
+--------------------------------------------------------------------------------
+[2026-11-19 19:01:14] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+我要如何使用這專案
+
+【AI 回應】
+提供三大使用方式與快速上手指南：
+1. 本機環境安裝與測試執行（venv、requirements.txt、pytest）。
+2. 家族成員調整（config/family_profile.yaml）與 Python 腳本自訂試算真實總預算。
+3. Obsidian 知識圖譜導覽（開啟 00_Index.md 與 MOC.md）。
+4. 規劃後續 Phase 2~4 里程碑推進路徑。
+
+--------------------------------------------------------------------------------
+[2026-11-19 19:26:04] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+收工時，有順便儲存至Obsidian 嗎
+
+【AI 回應】
+全自動完成核心 Obsidian 保險庫同步閉環：
+1. 建立專案駕駛艙 PROJECT_COCKPIT.md，並將全套 12 份規格與筆記同步至 C:\Users\klinlin\obsidian-vault\2026Antigravity\TravelLtinerary。
+2. 呼叫 sync_obsidian.ps1 執行智慧雙向檔案同步，自動鏡像至雲端硬碟 secondbrain。
+3. 自動 commit 並推送到 GitHub 遠端儲存庫（https://github.com/klin1976/obsidian-vault）。
+
+--------------------------------------------------------------------------------
+[2026-11-19 19:49:26] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+/goal 推進 Phase 2：「開始實作 Phase 2 詳情頁解析引擎（Crawl4AI + Gemini/Ollama）與 fast-flights 機票基準查詢」
+
+【AI 回應】
+完成 Phase 2 詳情頁解析引擎與機票基準模組落地：
+1. 建立 src/config.py，支援雙模型供應商切換（Gemini API 與 Ollama）。
+2. 實作 src/extractor/detail_crawler.py，封裝 Crawl4AI AsyncWebCrawler、EXPAND_TABS_JS 頁籤展開腳本與 LLMExtractionStrategy。
+3. 實作 src/extractor/flight_benchmark.py，適配 fast-flights 3.1.0 查詢 TPE/KHH <-> OKA 直飛機票基準價並寫入 SQLite flight_benchmarks 表。
+4. 實作 scripts/test_phase2_cli.py 端到端測試工具。
+5. 實測 Google Flights 成功撈回 2027-02-04 ~ 2027-02-08 機票基準（TPE NT$20,450 / KHH NT$18,715）。
+6. 單元測試 tests/test_extractor.py（5 passed），全庫 20/20 測試全部通過（Exit Code 0）。
+7. 更新 PROJECT_COCKPIT.md 並提交 Commit abfe554 推送至 GitHub。
+
+--------------------------------------------------------------------------------
+[2026-11-19 20:18:28] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+收工
+
+【AI 回應】
+執行專案關閉與全面同步閉環：
+1. 更新本專案 ConversationRecord.txt 與 ConversationRecord.md。
+2. 將所有最新檔案同步至 Obsidian 保險庫（C:\Users\klinlin\obsidian-vault\2026Antigravity\TravelLtinerary）。
+3. 執行 sync_obsidian.ps1 同步至雲端硬碟 secondbrain 與 obsidian-vault GitHub。
+4. 自動提交並推送本專案最新 Commit 至 GitHub 遠端儲存庫。

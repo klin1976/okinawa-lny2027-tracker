@@ -41,3 +41,33 @@ created: 2026-11-19
   - 更新對話紀錄檔案（`ConversationRecord.txt` / `ConversationRecord.md`）。
   - 清理 Swarm 工作群組。
   - 自動推送最新對話紀錄至 GitHub。
+
+### 4. 專案使用指南說明 [19:01:14]
+- **用戶提問**：`我要如何使用這專案`
+- **AI 處理**：
+  - 提供本機執行、家族預算自訂試算、Obsidian 導覽與後續 Phase 指引。
+
+### 5. Obsidian Vault 核心閉環建置與同步 [19:26:04]
+- **用戶提問**：`收工時，有順便儲存至Obsidian 嗎`
+- **AI 處理**：
+  - 建立 [[PROJECT_COCKPIT|專案駕駛艙]]。
+  - 將 12 份筆記鏡像至 `C:\Users\klinlin\obsidian-vault\2026Antigravity\TravelLtinerary`。
+  - 呼叫 `sync_obsidian.ps1` 雙向同步至雲端硬碟 `secondbrain` 並推送到 [obsidian-vault GitHub](https://github.com/klin1976/obsidian-vault)。
+
+### 6. Phase 2 詳情頁解析引擎與機票基準模組實作 [19:49:26]
+- **用戶提問**：`/goal 推進 Phase 2：「開始實作 Phase 2 詳情頁解析引擎（Crawl4AI + Gemini/Ollama）與 fast-flights 機票基準查詢」`
+- **AI 處理**：
+  - 實作 `src/config.py`（雙模型切換：Gemini API / Ollama）。
+  - 實作 `src/extractor/detail_crawler.py`（Crawl4AI + `EXPAND_TABS_JS` + `LLMExtractionStrategy`）。
+  - 實作 `src/extractor/flight_benchmark.py`（`fast-flights 3.1.0` 查詢 TPE/KHH <-> OKA 直飛機票基準）。
+  - 實作 `scripts/test_phase2_cli.py` 端到端整合測試指令。
+  - 實測撈回 2027 春節直飛機票基準價並寫入 SQLite：TPE NT\$ 20,450 / KHH NT\$ 18,715。
+  - 撰寫 `tests/test_extractor.py`（5 passed），全庫 20/20 測試全數 PASS。
+  - 提交 Commit `abfe554` 推送至專案 GitHub。
+
+### 7. 專案完整收工與全面同步 [20:18:28]
+- **用戶提問**：`收工`
+- **AI 處理**：
+  - 更新對話紀錄檔案（`ConversationRecord.txt` / `ConversationRecord.md`）。
+  - 將變更鏡像至 Obsidian Vault 並執行 `sync_obsidian.ps1` 進行雙向同步與推送。
+  - 提交並推送專案最新對話紀錄至 GitHub。
