@@ -30,6 +30,7 @@ flowchart TD
     Index["[[00_Index|🗺️ 00_Index (MOC 總索引)]]"]
 
     subgraph 核心規格與架構
+        COCKPIT["[[PROJECT_COCKPIT|🛰️ PROJECT_COCKPIT (專案駕駛艙)]]"]
         README["[[README|📘 README (專案導覽)]]"]
         SPEC["[[2027_TravelLtinerary|📋 2027_TravelLtinerary (系統規格書)]]"]
         AGENTS["[[AGENTS|🤖 AGENTS (多代理協作架構)]]"]
@@ -78,6 +79,7 @@ flowchart TD
 
 | 文檔名稱 | Obsidian 連結 | 類型 | 說明 |
 |---------|--------------|------|------|
+| **專案駕駛艙** | [[PROJECT_COCKPIT]] | `project-cockpit` | 專案即時狀態、本機與 GitHub 路徑、已完成里程碑與模組總覽 |
 | **專案首頁** | [[README]] | `documentation` | 專案簡介、技術堆疊、快速上手與架構索引 |
 | **系統計畫規格書** | [[2027_TravelLtinerary]] | `specification` | 最高指導藍圖，涵蓋業務背景、系統資料流、四階段里程碑與 Pydantic 核心資料模型 |
 | **AI 多代理架構** | [[AGENTS]] | `agent-manifest` | 5 大 Agent (Orchestrator, Backend, Database, QA, Docs) 角色定義、路由演算法與防呆紅線 |
