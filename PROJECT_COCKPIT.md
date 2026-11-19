@@ -35,7 +35,7 @@ tags:
 - **Git 分支**：`main` (與遠端同步)
 - **GitHub 儲存庫**：[klin1976/okinawa-lny2027-tracker](https://github.com/klin1976/okinawa-lny2027-tracker) (Private)
 - **架構模式**：`API_ONLY` (FastAPI + Playwright + SQLite + n8n)
-- **當前里程碑**：**Phase 1 完成**（架構骨架、Schema、SQLite 4 張表與 Repository、家族預算/告警引擎、15 項單元測試全數 PASS）
+- **當前里程碑**：**Phase 2 完成**（詳情頁 Crawl4AI + LLM 解析引擎、`fast-flights 3.1.0` 機票基準查詢、CLI 測試指令與 20 項單元測試全數 PASS）
 
 ---
 
@@ -58,8 +58,15 @@ tags:
 ### 4. 驗收測試 (`tests/`)
 - `tests/test_budget_engine.py` (7 passed)
 - `tests/test_alert_detector.py` (6 passed)
+- `tests/test_extractor.py` (5 passed)
 - `tests/test_repository.py` (2 passed)
-- 總計 **15/15 測試全數通過 (Exit Code 0)**。
+- 總計 **20/20 測試全數通過 (Exit Code 0)**。
+
+### 5. 詳情頁解析與機票基準 (`src/extractor/`, `src/config.py`)
+- **`src/config.py`**：透過 `pydantic-settings` 統一管理 `.env` 與 YAML 設定，支援切換 Gemini API (`gemini/gemini-2.5-flash`) 與 Ollama (`ollama/qwen2.5:14b`)。
+- **`src/extractor/detail_crawler.py`**：封裝 Crawl4AI `AsyncWebCrawler` + `EXPAND_TABS_JS`（展開折疊面板與條款頁籤）+ `LLMExtractionStrategy`，輸出並驗證為 `OkinawaTourPackage`。
+- **`src/extractor/flight_benchmark.py`**：適配 `fast-flights 3.1.0` (`FlightQuery`, `create_query`, `get_flights`)，支援查詢 `TPE/KHH <-> OKA` 直飛機票基準並寫入 SQLite `flight_benchmarks`（已實測撈回 2027-02-04 ~ 2027-02-08 真實基準價：TPE NT\$ 20,450、KHH NT\$ 18,715）。
+- **`scripts/test_phase2_cli.py`**：Phase 2 整合 CLI 測試工具，串聯機票基準、詳情頁解析、SQLite 寫入與家族預算試算。
 
 ---
 
