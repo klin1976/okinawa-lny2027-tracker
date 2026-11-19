@@ -2,3 +2,54 @@
 專案名稱：2027 春節沖繩旅遊跨社比價與監控系統 (okinawa-lny2027-tracker)
 標題：自動化追蹤 2027 春節五大旅行社沖繩 5 日以下團體行程與直飛機票基準，計算家族真實總預算並透過 n8n 發送異動告警
 ================================================================================
+
+--------------------------------------------------------------------------------
+[2026-11-19 16:26:43] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+專案初始化，並參考"F:\Antigravity\TravelLtinerary\2027_TravelLtinerary.md"
+
+【AI 回應】
+完成專案初始化標準骨架搭建：
+1. 建立 ConversationRecord.txt、ConversationRecord.md 與 REMINDER.txt。
+2. 建立 README.md 與 AGENTS.md（配置 5 個 Agent 與 routing_rules / pipeline_templates）。
+3. 建立 docs/api_spec.md（定義 /health 與 /api/v1/pipeline/daily-run 端點及 SQLite 約束）。
+4. 建立 skills/ 三大核心開發規範：
+   - skills/okinawa-discovery/SKILL.md
+   - skills/okinawa-extractor/SKILL.md
+   - skills/okinawa-calculator/SKILL.md
+
+--------------------------------------------------------------------------------
+[2026-11-19 16:44:44] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+/swarm 
+1.幫我補上obsidian的關聯
+2.開始建立目錄結構與 Phase 1 程式碼，還是先設定 GitHub 遠端同步 → 都幫我做
+
+【AI 回應】
+啟動 Swarm 多代理協同工作群組（monitor, obsidian, builder, verifier, gitops）並行作業：
+1. 【Obsidian 知識圖譜關聯】
+   - 建立 00_Index.md（MOC 中心索引，含 Mermaid 架構圖）與 MOC.md。
+   - 建立 REMINDER.md Markdown 提醒。
+   - 全庫 Markdown 注入標準 YAML Frontmatter 與 166 處 Obsidian [[wikilinks]] 雙向鏈結（100% 解析通過）。
+2. 【Phase 1 目錄結構與核心實作】
+   - 配置 config/agencies.yaml 與 config/family_profile.yaml。
+   - 實作 Pydantic v2 模型：src/schemas/tour_schema.py、discovery_schema.py、budget_schema.py。
+   - 實作 SQLite 儲存層：src/db/database.py（4 張表）與 src/db/repository.py。
+   - 實作模組三預算與告警引擎：src/calculator/budget_engine.py（滿6歲強制佔床、小費天數乘算、三人房/房差、機位充足度、長輩警示、評分）與 alert_detector.py（降價、低機位、新團去重）。
+   - 配置 requirements.txt、.env.example、Dockerfile、docker-compose.yml。
+3. 【Phase 1 單元測試驗收】
+   - 執行 pytest tests/，包含 test_budget_engine.py (7)、test_alert_detector.py (6)、test_repository.py (2)，共 15/15 測試全數 PASS（Exit Code 0）。
+4. 【Git 與 GitHub 遠端同步】
+   - 配置生產級 .gitignore，完成本地 git init 與初次提交。
+   - 透過 GitHub CLI 建立並推送到遠端私有儲存庫：https://github.com/klin1976/okinawa-lny2027-tracker。
+
+--------------------------------------------------------------------------------
+[2026-11-19 19:00:02] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+收工
+
+【AI 回應】
+完成專案關閉結算，自動更新對話紀錄（ConversationRecord.txt / ConversationRecord.md），清理 Swarm Workers，並自動推送最新變更至 GitHub 遠端儲存庫。
