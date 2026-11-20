@@ -23,7 +23,7 @@ agencies:
     enabled: true
     adapter_class: "LionAdapter"
     search_url: "https://travel.liontravel.com/search"
-    api_pattern: "NormGroupList|SearchGroup"
+    api_pattern: "grouplistinfojson|NormGroupList|SearchGroup"
     timeout_seconds: 30
   cola:
     name: "可樂旅遊"

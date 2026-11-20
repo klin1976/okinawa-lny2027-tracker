@@ -35,7 +35,7 @@ tags:
 - **Git 分支**：`main` (與遠端同步)
 - **GitHub 儲存庫**：[klin1976/okinawa-lny2027-tracker](https://github.com/klin1976/okinawa-lny2027-tracker) (Private)
 - **架構模式**：`API_ONLY` (FastAPI + Playwright + SQLite + n8n)
-- **當前里程碑**：**Phase 2 完成**（詳情頁 Crawl4AI + LLM 解析引擎、`fast-flights 3.1.0` 機票基準查詢、CLI 測試指令與 20 項單元測試全數 PASS）
+- **當前里程碑**：**Phase 3 完成**（五大旅行社雙模式 Adapter、`scripts/inspect_xhr.py`、`PipelineService` 7 天增量管線與 26 項測試全數 PASS）
 
 ---
 
@@ -59,8 +59,15 @@ tags:
 - `tests/test_budget_engine.py` (7 passed)
 - `tests/test_alert_detector.py` (6 passed)
 - `tests/test_extractor.py` (5 passed)
+- `tests/test_discovery.py` (4 passed)
+- `tests/test_pipeline_service.py` (2 passed)
 - `tests/test_repository.py` (2 passed)
-- 總計 **20/20 測試全數通過 (Exit Code 0)**。
+- 總計 **26/26 測試全數通過 (Exit Code 0)**。
+
+### 6. 上游清單發現與全管線串聯 (`src/discovery/`, `src/services/`)
+- **`scripts/inspect_xhr.py`**：Playwright JSON XHR 攔截傾印工具，已實測攔截雄獅旅遊 `grouplistinfojson` 真實端點。
+- **`src/discovery/`**：實作 `BaseAgencyAdapter`（Mode A `httpx` Direct XHR + Mode B Playwright Network Interception / DOM 備援）與五大旅行社 Adapter（`LionAdapter` 已實測於 `mode_a_xhr` 成功抓回 **170 筆** 2027/02 沖繩 ≤5 日真實行程）。
+- **`src/services/pipeline_service.py`**：串聯「清單抓取 → 7 天增量比對（已解析團號免重複呼叫 LLM）→ 機票基準 → 家族試算與告警去重」，單社失敗不中斷整體執行。
 
 ### 5. 詳情頁解析與機票基準 (`src/extractor/`, `src/config.py`)
 - **`src/config.py`**：透過 `pydantic-settings` 統一管理 `.env` 與 YAML 設定，支援切換 Gemini API (`gemini/gemini-2.5-flash`) 與 Ollama (`ollama/qwen2.5:14b`)。
