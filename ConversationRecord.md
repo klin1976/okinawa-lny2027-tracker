@@ -71,3 +71,54 @@ created: 2026-11-19
   - 更新對話紀錄檔案（`ConversationRecord.txt` / `ConversationRecord.md`）。
   - 將變更鏡像至 Obsidian Vault 並執行 `sync_obsidian.ps1` 進行雙向同步與推送。
   - 提交並推送專案最新對話紀錄至 GitHub。
+
+## 2026-11-20 對話紀錄
+
+### 8. 本機環境驗證與 Phase 2 測試修復 [08:35:10]
+- **用戶提問**：`本機已建立 .env，請協助我測試`
+- **AI 處理**：
+  - 驗證本機 `.env`，確認 `GEMINI_API_KEY`、`LLM_PROVIDER=gemini` 配置。
+  - 修復依賴：更新 `flight_benchmark.py` 適配 `fast-flights 3.1.0` 新版 API；下載 Playwright Chromium 瀏覽器二進位檔。
+  - 因應 Google Gemini 2.5 flash 下線，升級預設模型至 `gemini-3.8-flash`。
+  - 執行 `scripts/test_phase2_cli.py` 驗證端到端解析與 Google Flights 基準價查詢成功。
+
+### 9. Phase 3 五大旅行社爬蟲 Adapter 與管線服務 [09:30:25]
+- **用戶提問**：`進入 Phase 3（五大旅行社清單自動撈取與 XHR 偵錯）！`
+- **AI 處理**：
+  - 實作五大旅行社雙模式 Adapter（`lion`、`cola`、`settour`、`richmont`、`fourp`）。
+  - 實作 `scripts/inspect_xhr.py` 偵錯工具。
+  - 實作 `src/services/pipeline_service.py`（7 天增量比對防重複呼叫 LLM、單社失敗隔離）。
+  - 撰寫單元測試，全庫 28/28 測試 PASS。
+
+### 10. Phase 4 架構深度規劃 (Planning Phase) [10:05:42]
+- **用戶提問**：`/swarm 1.針對其他四家（可樂／東南／山富／世邦）執行 scripts/inspect_xhr.py --agency <name> 對齊最新線上 API 欄位。 2.進入最後階段：Phase 4（FastAPI REST API 服務 src/main.py、Docker 容器化與 n8n 監控告警工作流）→ 幫我列出詳細的計畫書，先不要改程式`
+- **AI 處理**：
+  - 執行線上 XHR 探測：雄獅正常（JSON）、山富/世邦為 SSR HTML、可樂/東南受 WAF 阻擋。
+  - 撰寫並產出深度實作計畫書 `implementation_plan.md`，獲使用者審批核准。
+
+### 11. Phase 4 落地實作與全鏈路閉環 [10:20:15]
+- **用戶提問**：`[核准計畫書] 推進 Phase 4 落地實作與測試`
+- **AI 處理**：
+  - 實作 `src/main.py` FastAPI 應用（支援 `lifespan`、`X-API-Key` 認證、5 大 REST 端點）。
+  - 配置 `docker-compose.yml`（2GB 限制、2GB shm、healthcheck、容器依賴）與 `Dockerfile`。
+  - 設計產生 `n8n/okinawa_monitor_workflow.json`（排程 + HTTP Request + 告警過濾 + Telegram 推播）。
+  - 重構 `richmont_adapter.py` 與 `fourp_adapter.py` 精確對齊 SSR HTML DOM 結構。
+  - 撰寫實體 HTML DOM Fixtures 與單元/整合測試，全庫 33/33 測試全部通過（Exit Code 0）。
+  - 更新 `docs/api_spec.md` 與 `PROJECT_COCKPIT.md`，提交 Commit `a19af95` 推送至 GitHub。
+
+### 12. n8n 與 FastAPI 自動化架構與 Telegram 推播詳細解說 [14:21:49]
+- **用戶提問**：`啟動後可開啟 n8n 介面（http://localhost:5678）匯入 n8n/okinawa_monitor_workflow.json，設定環境變數 OKA_API_KEY（對應 .env 的 API_KEY）與 Telegram Credential 即可全自動運行。 → 這是什麼意思???詳細解釋給我聽`
+- **AI 處理**：
+  - 深入剖析 n8n（自動化排程發報秘書）與 FastAPI（爬蟲與預算運算引擎）的架構分工。
+  - 繪製端到端資料流 Mermaid 圖解。
+  - 逐項拆解 Web UI、預製工作流 JSON、X-API-Key 通行證、Telegram Bot Token / Chat ID 運作原理。
+  - 提供 5 分鐘具體操作手冊（BotFather 申請、Docker 啟動、n8n 匯入與憑證設定）。
+
+### 13. 專案全功能完成收工與全面同步 [14:26:37]
+- **用戶提問**：`收工，並推送至github`
+- **AI 處理**：
+  - 更新對話紀錄檔案（`ConversationRecord.txt` / `ConversationRecord.md`）。
+  - 鏡像同步全套規格與筆記至 Obsidian Vault（`C:\Users\klinlin\obsidian-vault\2026Antigravity\TravelLtinerary`）。
+  - 呼叫 `sync_obsidian.ps1` 進行雙向同步與 GitHub 推送。
+  - 自動提交專案最新紀錄並推送至 GitHub 遠端儲存庫。
+
