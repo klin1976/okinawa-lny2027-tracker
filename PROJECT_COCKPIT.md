@@ -6,7 +6,7 @@ status: active
 repo: F:/Antigravity/TravelLtinerary
 github: https://github.com/klin1976/okinawa-lny2027-tracker
 branch: main
-updated: '2026-11-19'
+updated: '2026-11-20'
 tags:
   - project
   - antigravity
@@ -35,7 +35,7 @@ tags:
 - **Git 分支**：`main` (與遠端同步)
 - **GitHub 儲存庫**：[klin1976/okinawa-lny2027-tracker](https://github.com/klin1976/okinawa-lny2027-tracker) (Private)
 - **架構模式**：`API_ONLY` (FastAPI + Playwright + SQLite + n8n)
-- **當前里程碑**：**Phase 3 完成**（五大旅行社雙模式 Adapter、`scripts/inspect_xhr.py`、`PipelineService` 7 天增量管線與 26 項測試全數 PASS）
+- **當前里程碑**：**Phase 4 完成**（FastAPI 5 端點與 `X-API-Key` 認證、`Dockerfile` / `docker-compose.yml` 容器化與健康檢查、`n8n/okinawa_monitor_workflow.json` 監控推播工作流、五大旅行社 Adapter 補齊與完整測試套件）
 
 ---
 
@@ -74,6 +74,12 @@ tags:
 - **`src/extractor/detail_crawler.py`**：封裝 Crawl4AI `AsyncWebCrawler` + `EXPAND_TABS_JS`（展開折疊面板與條款頁籤）+ `LLMExtractionStrategy`，輸出並驗證為 `OkinawaTourPackage`。
 - **`src/extractor/flight_benchmark.py`**：適配 `fast-flights 3.1.0` (`FlightQuery`, `create_query`, `get_flights`)，支援查詢 `TPE/KHH <-> OKA` 直飛機票基準並寫入 SQLite `flight_benchmarks`（已實測撈回 2027-02-04 ~ 2027-02-08 真實基準價：TPE NT\$ 20,450、KHH NT\$ 18,715）。
 - **`scripts/test_phase2_cli.py`**：Phase 2 整合 CLI 測試工具，串聯機票基準、詳情頁解析、SQLite 寫入與家族預算試算。
+
+### 7. FastAPI 服務、容器化與 n8n 監控工作流 (Phase 4)
+- **`src/main.py`**：實作 FastAPI 5 大 RESTful 端點（`/health`、`/api/v1/pipeline/daily-run`、`/api/v1/extract/single`、`/api/v1/rankings`、`/api/v1/tours/{tour_uid}/history`）與 `X-API-Key` 驗證機制。
+- **`Dockerfile` & `docker-compose.yml`**：整合 Playwright Chromium、中文字體、`/app/data/reports` 目錄、`HEALTHCHECK`、`mem_limit: 2g`、`shm_size: 2gb` 與 `n8n` `service_healthy` 依賴編排。
+- **`n8n/okinawa_monitor_workflow.json`**：可匯入 n8n 工作流，支援每日 09:00 / 21:00 (`Asia/Taipei`) 排程與手動觸發、`IF` 告警過濾、`Code` 節點排版 Top 5 排行與 `Telegram` 推播。
+- **`docs/api_spec.md`**：完整記錄 5 大 API 端點規格、認證方式與 4 張 SQLite 核心資料表約束。
 
 ---
 

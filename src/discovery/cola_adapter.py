@@ -1,6 +1,9 @@
 from __future__ import annotations
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+import httpx
+from playwright.async_api import async_playwright
 
 from src.discovery.base_adapter import BaseAgencyAdapter
 from src.schemas.discovery_schema import TourListItem
@@ -9,12 +12,54 @@ logger = logging.getLogger(__name__)
 
 
 class ColaAdapter(BaseAgencyAdapter):
-    """可樂旅遊清單撈取 Adapter（支援 TourSearch AJAX JSON 與 Playwright 備援）。"""
+    """可樂旅遊清單撈取 Adapter（支援 TourSearch AJAX JSON 與 Playwright 備援，含 HTTP 435 WAF 偵測）。"""
 
     agency_key = "cola"
     agency_name = "可樂旅遊"
 
     XHR_ENDPOINT = "https://www.colatour.com.tw/C10A_TourList/api/TourSearch"
+
+    @staticmethod
+    def _check_waf_block(status_code: Optional[int], body_text: str) -> None:
+        if status_code == 435 or "網站連線異常" in body_text:
+            raise RuntimeError(
+                f"可樂旅遊遭 WAF 攔截 (HTTP {status_code or 'N/A'} / 網站連線異常)，請確認網路環境或啟用住宅代理"
+            )
+
+    async def _post_json(
+        self,
+        url: str,
+        json_body: Dict[str, Any],
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        merged = {**self._default_headers(), **(headers or {})}
+        async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True) as client:
+            resp = await client.post(url, json=json_body, headers=merged)
+            self._check_waf_block(resp.status_code, resp.text)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def fetch_mode_b_playwright(self) -> List[TourListItem]:
+        """Mode B Playwright 備援，於頁面載入時優先偵測 HTTP 435 / WAF 異常頁。"""
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                locale="zh-TW",
+                user_agent=self._default_headers()["User-Agent"],
+            )
+            page = await context.new_page()
+            try:
+                resp = await page.goto(
+                    self.search_url,
+                    wait_until="domcontentloaded",
+                    timeout=int(self.timeout_seconds * 1000),
+                )
+                status = resp.status if resp else None
+                html = await page.content()
+                self._check_waf_block(status, html)
+            finally:
+                await browser.close()
+        return await super().fetch_mode_b_playwright()
 
     def _build_payload(self, page_index: int = 1) -> Dict[str, Any]:
         date_range = self.common_filters.get("departure_date_range", {})

@@ -135,30 +135,80 @@ def test_five_agencies_xhr_parsing_and_filtering():
 def test_dom_fallback_for_richmont_and_fourp():
     richmont = RichmontAdapter(common_filters=COMMON_FILTERS)
     html_r = """
-    <div class="tour-card" data-tour-code="RM270205" data-depart-date="2027-02-05">
-        <a href="/group/itinerary/RM270205"><h3>山富桃園出發沖繩5日</h3></a>
-        <span class="price">NT$41,900</span>
-        <span class="seats">12席</span>
+    <div class="products-grid">
+      <div class="product">
+        <div class="cardBox">
+          <h6 class="tourCard name">山富桃園出發沖繩美麗海4日</h6>
+          <div class="tour-info"><i class="fa-clock"></i><span>4 天</span></div>
+          <div class="tour-info"><i class="fa-location-arrow"></i><span>桃園國際機場出發</span></div>
+          <div class="price-deposit-h"><span class="price">$27,000</span></div>
+          <div class="item inline-block">
+            <a href="/group/product/OKA04270202A">
+              <h6>02/02</h6>
+              <small>保證出團 可售: 0</small>
+            </a>
+          </div>
+          <div class="item inline-block">
+            <a href="/group/product/OKA04270205B">
+              <h6>02/05</h6>
+              <small>可售: 7</small>
+            </a>
+          </div>
+          <div class="item inline-block">
+            <a href="/group/product/OKA04270208C">
+              <h6>02/08</h6>
+              <small>滿團 可售: 0</small>
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
     """
     items_r = richmont.parse_dom_fallback(html_r)
-    assert len(items_r) == 1
-    assert items_r[0].tour_code == "RM270205"
-    assert items_r[0].adult_price == 41900
-    assert items_r[0].seats_available == 12
+    assert len(items_r) == 3
+    assert items_r[0].tour_code == "OKA04270202A"
+    assert items_r[0].departure_date == "2027-02-02"
+    assert items_r[0].days == 4
+    assert items_r[0].departure_airport == "TPE"
+    assert items_r[0].adult_price == 27000
+    assert items_r[0].seats_available == 0
+    assert items_r[0].status == "保證出團"
+    assert items_r[0].detail_url == "https://www.travel4u.com.tw/group/product/OKA04270202A"
+    assert items_r[1].tour_code == "OKA04270205B"
+    assert items_r[1].seats_available == 7
+    assert items_r[1].status == "可報名"
+    assert items_r[2].status == "滿團"
 
     fourp = FourPAdapter(common_filters=COMMON_FILTERS)
     html_f = """
-    <div class="tour-item" data-code="FP270208" data-date="2027-02-08">
-        <a href="/tour/FP270208"><h3>世邦高雄沖繩4日</h3></a>
-        <span class="price">36900</span>
-        <span class="qty">10</span>
+    <div id="search-block">
+      <figure class="block_style">
+        <div class="go_number"><h6>OKACI270210GE</h6></div>
+        <div class="main_words">
+          <a href="/products/group/detail?id=OKACI270210GE&sacct_no=23420481">
+            <h4>《沖繩好好玩》HAPPY GO四日～高雄出發</h4>
+          </a>
+        </div>
+        <div class="go-date">2027/02/10(三)</div>
+        <div class="item_days">4天</div>
+        <div class="go-airport"><span class="airport">高雄小港機場</span></div>
+        <div class="price_box"><span class="text-danger">$34,888</span></div>
+        <div class="available"><span class="text-danger">15</span></div>
+        <div class="go_tag"><a class="tag">保證出發</a><a class="tag d-none">額滿</a></div>
+        <a class="btn btn-primary" href="/products/group/detail?id=OKACI270210GE&sacct_no=23420481">報名</a>
+      </figure>
     </div>
     """
     items_f = fourp.parse_dom_fallback(html_f)
     assert len(items_f) == 1
-    assert items_f[0].tour_code == "FP270208"
+    assert items_f[0].tour_code == "OKACI270210GE"
+    assert items_f[0].departure_date == "2027-02-10"
+    assert items_f[0].days == 4
     assert items_f[0].departure_airport == "KHH"
+    assert items_f[0].adult_price == 34888
+    assert items_f[0].seats_available == 15
+    assert items_f[0].status == "保證出團"
+    assert items_f[0].detail_url == "https://www.4p.com.tw/products/group/detail?id=OKACI270210GE&sacct_no=23420481"
 
 
 class MockFallbackAdapter(BaseAgencyAdapter):
@@ -242,4 +292,10 @@ async def test_dual_mode_fallback_and_both_fail():
 def test_build_enabled_adapters_from_yaml():
     cfg = load_agencies_config("config/agencies.yaml")
     adapters = build_enabled_adapters(cfg)
-    assert len(adapters) == 5
+    assert [a.agency_key for a in adapters] == ["lion", "richmont", "fourp"]
+
+
+def test_cola_waf_block_raises_runtime_error():
+    cola = ColaAdapter(common_filters=COMMON_FILTERS)
+    with pytest.raises(RuntimeError, match="WAF"):
+        cola._check_waf_block(435, "<html>網站連線異常</html>")

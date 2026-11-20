@@ -27,29 +27,29 @@ agencies:
     timeout_seconds: 30
   cola:
     name: "可樂旅遊"
-    enabled: true
+    enabled: false  # 暫時停用：WAF 攔截回傳 HTTP 435（網站連線異常）
     adapter_class: "ColaAdapter"
     search_url: "https://www.colatour.com.tw/C10A_TourList/C10A01_Search.aspx"
     api_pattern: "TourSearch"
     timeout_seconds: 30
   settour:
     name: "東南旅遊"
-    enabled: true
+    enabled: false  # 暫時停用：trip/search 為 404，www/tour 遭 WAF/Tarpit 逾時阻塞
     adapter_class: "SettourAdapter"
     search_url: "https://trip.settour.com.tw/search"
     api_pattern: "prodSearch"
-    timeout_seconds: 30
+    timeout_seconds: 15
   richmont:
     name: "山富旅遊"
     enabled: true
     adapter_class: "RichmontAdapter"
-    search_url: "https://www.travel4u.com.tw/group/"
+    search_url: "https://www.travel4u.com.tw/group/search/"
     api_pattern: "/group/"
     timeout_seconds: 30
   fourp:
     name: "世邦旅遊"
     enabled: true
     adapter_class: "FourPAdapter"
-    search_url: "https://www.4p.com.tw/tour/"
+    search_url: "https://www.4p.com.tw/Products/Group/Search"
     api_pattern: "search"
     timeout_seconds: 30

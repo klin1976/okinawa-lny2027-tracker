@@ -1,0 +1,210 @@
+{
+  "name": "Okinawa LNY 2027 Tour Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 21 * * *"
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        240
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://okinawa-tracker:8000/api/v1/pipeline/daily-run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.OKA_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"agencies\": [\"all\"],\n  \"force_reparse\": false,\n  \"max_new_details_per_run\": 15\n}",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "alerts-length-gt-zero",
+              "leftValue": "={{ $json.alerts ? $json.alerts.length : 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "IF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json || {};\nconst alerts = Array.isArray(data.alerts) ? data.alerts : [];\nconst rankings = Array.isArray(data.top_5_rankings) ? data.top_5_rankings : [];\nconst runId = data.run_id || new Date().toISOString();\n\nconst escapeHtml = (str) => String(str ?? '')\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;');\n\nconst lines = [];\nlines.push(`<b>🌺 2027 春節沖繩旅遊監控報告</b>`);\nlines.push(`<code>Run: ${escapeHtml(runId)}</code>`);\nlines.push('');\nlines.push(`<b>🚨 異動告警 (${alerts.length})</b>`);\n\nfor (const alert of alerts) {\n  const type = escapeHtml(alert.alert_type || 'ALERT');\n  const msg = escapeHtml(alert.message || '');\n  const uid = alert.tour_uid ? ` (${escapeHtml(alert.tour_uid)})` : '';\n  lines.push(`• <b>[${type}]</b> ${msg}${uid}`);\n}\n\nif (rankings.length > 0) {\n  lines.push('');\n  lines.push('<b>🏆 Top 5 家族總價排行</b>');\n  rankings.slice(0, 5).forEach((item, idx) => {\n    const agency = escapeHtml(item.agency || '未知旅行社');\n    const name = escapeHtml(item.tour_name || item.tour_uid || '未命名行程');\n    const dep = escapeHtml(item.departure_date || '-');\n    const total = typeof item.grand_total_twd === 'number'\n      ? `NT$ ${item.grand_total_twd.toLocaleString('en-US')}`\n      : '待估算';\n    const seats = item.seats_available !== undefined && item.seats_available !== null\n      ? `${item.seats_available} 席`\n      : '未知';\n    const url = item.detail_url || item.source_url || '';\n    const linkLine = url ? `   🔗 <a href=\"${escapeHtml(url)}\">查看行程</a>` : '';\n    lines.push(`${idx + 1}. <b>[${agency}]</b> ${name}`);\n    lines.push(`   📅 ${dep} ｜ 💰 <b>${total}</b> ｜ 💺 剩餘 ${seats}`);\n    if (linkLine) lines.push(linkLine);\n  });\n}\n\nreturn [{\n  json: {\n    ...data,\n    telegram_message: lines.join('\\n')\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.telegram_message }}",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1180,
+        280
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL_ID",
+          "name": "Okinawa Tracker Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "IF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Taipei"
+  },
+  "versionId": "00000000-0000-4000-8000-202702040001",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "okinawa-2027"
+    }
+  ]
+}

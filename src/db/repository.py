@@ -128,6 +128,34 @@ class TourRepository:
             await db.commit()
             return cursor.lastrowid or 0
 
+    async def get_latest_snapshot(self, tour_uid: str) -> Optional[Dict[str, Any]]:
+        query = """
+        SELECT * FROM price_snapshots
+        WHERE tour_uid = ?
+        ORDER BY captured_at DESC, id DESC
+        LIMIT 1;
+        """
+        async with self.get_connection() as db:
+            async with db.execute(query, (tour_uid,)) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def get_last_snapshot_time(self) -> Optional[str]:
+        query = "SELECT MAX(captured_at) AS last_run_at FROM price_snapshots;"
+        async with self.get_connection() as db:
+            async with db.execute(query) as cursor:
+                row = await cursor.fetchone()
+                return row["last_run_at"] if row and row["last_run_at"] else None
+
+    async def check_connection(self) -> bool:
+        try:
+            async with self.get_connection() as db:
+                async with db.execute("SELECT 1;") as cursor:
+                    row = await cursor.fetchone()
+                    return row is not None
+        except Exception:
+            return False
+
     async def get_latest_two_snapshots(self, tour_uid: str) -> List[Dict[str, Any]]:
         query = """
         SELECT * FROM price_snapshots

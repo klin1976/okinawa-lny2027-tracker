@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+import httpx
 
 from src.discovery.base_adapter import BaseAgencyAdapter
 from src.schemas.discovery_schema import TourListItem
@@ -9,12 +11,34 @@ logger = logging.getLogger(__name__)
 
 
 class SettourAdapter(BaseAgencyAdapter):
-    """東南旅遊清單撈取 Adapter（支援 prodSearch JSON 與 Playwright 備援）。"""
+    """東南旅遊清單撈取 Adapter（支援 prodSearch JSON 與 Playwright 備援，預設快速逾時 15s）。"""
 
     agency_key = "settour"
     agency_name = "東南旅遊"
 
     XHR_ENDPOINT = "https://trip.settour.com.tw/api/prodSearch"
+
+    def __init__(
+        self,
+        agency_config: Optional[Dict[str, Any]] = None,
+        common_filters: Optional[Dict[str, Any]] = None,
+        concurrency_config: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(agency_config, common_filters, concurrency_config)
+        self.timeout_seconds = float((agency_config or {}).get("timeout_seconds", 15))
+
+    async def _post_json(
+        self,
+        url: str,
+        json_body: Dict[str, Any],
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        try:
+            return await super()._post_json(url, json_body=json_body, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(
+                f"東南旅遊請求逾時 ({self.timeout_seconds}s)，可能遭 WAF/Tarpit 阻塞: {url}"
+            ) from exc
 
     def _build_payload(self, page_index: int = 1) -> Dict[str, Any]:
         date_range = self.common_filters.get("departure_date_range", {})
