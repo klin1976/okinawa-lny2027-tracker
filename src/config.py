@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # LLM 供應商設定 (gemini 或 ollama)
     llm_provider: str = Field("gemini", alias="LLM_PROVIDER")
     gemini_api_key: Optional[str] = Field(None, alias="GEMINI_API_KEY")
-    gemini_model: str = Field("gemini-2.5-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field("gemini-3.8-flash", alias="GEMINI_MODEL")
 
     ollama_base_url: str = Field("http://localhost:11434", alias="OLLAMA_BASE_URL")
     ollama_model: str = Field("qwen2.5:14b", alias="OLLAMA_MODEL")
