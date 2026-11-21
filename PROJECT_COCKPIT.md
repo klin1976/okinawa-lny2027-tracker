@@ -1,12 +1,12 @@
 ---
-project: okinawa-lny2027-tracker
+project: travel-radar
 type: project-cockpit
 created: '2026-11-19'
 status: active
 repo: F:/Antigravity/TravelLtinerary
 github: https://github.com/klin1976/okinawa-lny2027-tracker
 branch: main
-updated: '2026-11-20'
+updated: '2026-11-21'
 tags:
   - project
   - antigravity
@@ -15,75 +15,54 @@ tags:
   - crawl4ai
   - sqlite
   - fastapi
-  - n8n
-  - okinawa-2027
+  - github-actions
+  - travel-radar
 ---
 
-# 🛫 2027 春節沖繩旅遊跨社比價與監控系統 (okinawa-lny2027-tracker) 專案駕駛艙
+# 🛫 通用多目的地旅遊跨社比價與異動監控雷達 (`travel-radar`) 專案駕駛艙
 
-> **快捷導航**：[[00_Index|🗺️ 00_Index (MOC 總索引)]] ｜ [[2027_TravelLtinerary|📋 系統計畫規格書]] ｜ [[AGENTS|🤖 多代理手冊]] ｜ [[docs/api_spec|🔌 API 規格文件]] ｜ [[ConversationRecord|📝 對話紀錄]] ｜ [[REMINDER|⚠️ 提醒事項]]
+> **快捷導航**：[[00_Index|🗺️ 00_Index (MOC 總索引)]] ｜ [[README|📘 README]] ｜ [[2027_TravelLtinerary|📋 系統計畫規格書]] ｜ [[AGENTS|🤖 多代理手冊]] ｜ [[docs/api_spec|🔌 API 規格文件]] ｜ [[ConversationRecord|📝 對話紀錄]] ｜ [[REMINDER|⚠️ 提醒事項]]
 
 ---
 
 ## 📌 專案目的
-針對 **2027 年農曆春節區間（2027-02-01 至 2027-02-14，核心連假 2/4～2/10）**，自動追蹤臺灣五大旅行社（可樂、東南、雄獅、山富、世邦）的沖繩 5 天（含）以下行程與同期 Google Flights 直飛機票基準價，並依自訂家族成員結構計算真實總預算、機位充足度與每日異常告警。
+參考 [`klin1976/tech-training-radar`](https://github.com/klin1976/tech-training-radar) 的 Zero-Infra 雷達架構，打造**不限定旅遊國家、地點、天數（1~30 天）與季節**的通用旅遊團費比價與異動監控雷達。支援五大旅行社（雄獅、山富、世邦、可樂、東南）雙模式爬取、Google Flights 多國直飛／轉機機票基準、國別差異化家族總預算、0~100 綜合規則評分、GitHub Actions 自動巡檢回寫 SQLite，以及 Discord / Telegram 雙管道緊急告警與每日健康心跳。
 
 ---
 
 ## 🧭 目前狀態
 - **本機路徑**：`F:/Antigravity/TravelLtinerary`
-- **Git 分支**：`main` (與遠端同步)
+- **Git 分支**：`main`
 - **GitHub 儲存庫**：[klin1976/okinawa-lny2027-tracker](https://github.com/klin1976/okinawa-lny2027-tracker) (Private)
-- **架構模式**：`API_ONLY` (FastAPI + Playwright + SQLite + n8n)
-- **當前里程碑**：**Phase 4 完成**（FastAPI 5 端點與 `X-API-Key` 認證、`Dockerfile` / `docker-compose.yml` 容器化與健康檢查、`n8n/okinawa_monitor_workflow.json` 監控推播工作流、五大旅行社 Adapter 補齊與完整測試套件）
+- **主力運作架構**：**Zero-Infra CLI-First (`src/cli.py`) + GitHub Actions Cron + SQLite (`data/radar.db`) Commit 回 Repo**（保留 FastAPI `src/main.py` 與 Docker 作為選配 Web/API 層）
+- **當前里程碑**：**Phase 5 完成（通用化多目的地重構 & Zero-Infra 雷達落地）**
 
 ---
 
 ## 🚀 已完成里程碑與核心功能
 
-### 1. 資料模型與設定檔
-- **Pydantic v2 Schema**：`OkinawaTourPackage`（詳情模型）、`TourListItem`（清單模型）、`FamilyBudgetResult`（預算試算）、`AlertEvent`（異動告警）。
-- **外部化配置**：
-  - `config/agencies.yaml`：五大旅行社搜尋過濾參數與反爬蟲延遲。
-  - `config/family_profile.yaml`：成員年齡、日本滿 6 歲強制佔床、小費與三人房偏好、告警門檻與評分權重。
+### 1. 多目的地專案設定與通用 Schema (`config/trips/*.yaml`, `src/schemas/`)
+- **專案化配置 (`TripConfig`)**：支援同時定義多國旅遊追蹤專案，目前內建 4 份範例：
+  - `config/trips/okinawa_lny2027.yaml` (`enabled: true`，日本沖繩 4~5 日，佔床門檻 6 歲，直飛)
+  - `config/trips/hokkaido_winter2027.yaml` (`enabled: false`，日本北海道 5~7 日，佔床門檻 6 歲，直飛)
+  - `config/trips/korea_spring2027.yaml` (`enabled: false`，韓國首爾/釜山 4~6 日，人蔘/保肝購物站偵測)
+  - `config/trips/europe_summer2027.yaml` (`enabled: false`，歐洲奧捷/德瑞 9~13 日，佔床門檻 12 歲，`max_stops: 1` 轉機支援)
+- **Pydantic v2 通用模型**：`TourPackage`（保留 `OkinawaTourPackage` 別名相容）、`TourListItem`（1~30 天 + `trip_id`）、`FamilyBudgetResult`、`AlertEvent`（新增 `SEATS_RELEASED`、`GUARANTEED_DEPARTURE`）。
 
-### 2. SQLite 資料庫與 Repository (`src/db/`)
-- 4 張核心資料表：`tours`、`price_snapshots`、`flight_benchmarks`、`alert_logs`。
-- 支援增量解析比對（未滿 7 天沿用舊詳情）、每日價格與機位快照寫入、24 小時告警去重。
+### 2. SQLite 演進、自動遷移與事件驅動快照 (`src/db/`)
+- **資料表**：`tours`（含 `trip_id`, `destination_country`, `destination_airport`, `score`, `tags_json`）、`price_snapshots`（事件驅動寫入）、`flight_benchmarks`、`alert_logs`、`scan_history`（巡檢審計表）。
+- **無痛遷移與 WAL Checkpoint**：`init-db` 自動 `ALTER TABLE` 升級舊庫並回填 `trip_id`；`checkpoint_db` 確保 Git Commit `data/radar.db` 前合併所有異動。
 
-### 3. 模組三：家族真實總預算與告警引擎 (`src/calculator/`)
-- **`budget_engine.py`**：日本滿 6 歲強制佔床防護、每日小費乘算、奇數佔床三人房/單人房差檢核、全家機位充足度檢核、長輩警示與免稅購物站標註、綜合推薦評分。
-- **`alert_detector.py`**：降價告警 (`PRICE_DROP`)、低機位預警 (`LOW_SEATS`)、機位危急 (`SEAT_CRITICAL`)、新團分級 (`NEW_HIGH_VALUE_TOUR` / `NEW_TOUR`)。
+### 3. 混合爬蟲、動態詳情解析與多航線機票基準 (`src/discovery/`, `src/extractor/`)
+- **五大旅行社 Adapter 全面解耦**：移除沖繩與 5 天寫死邏輯，改由 `TripConfig` 注入多關鍵字迴圈搜尋、排除字詞與天數區間；採 `httpx` Direct XHR/SSR 優先，支援 `--no-playwright` 關閉瀏覽器降級。
+- **詳情解析與機票**：`DetailCrawler` 支援動態國家 Prompt；`FlightBenchmarkClient.fetch_route_benchmarks()` 支援任意國家機場與轉機設定。
 
-### 4. 驗收測試 (`tests/`)
-- `tests/test_budget_engine.py` (7 passed)
-- `tests/test_alert_detector.py` (6 passed)
-- `tests/test_extractor.py` (5 passed)
-- `tests/test_discovery.py` (4 passed)
-- `tests/test_pipeline_service.py` (2 passed)
-- `tests/test_repository.py` (2 passed)
-- 總計 **26/26 測試全數通過 (Exit Code 0)**。
+### 4. 雙層評估、差異引擎與雙管道推播 (`src/calculator/`, `src/evaluator/`, `src/notifier/`)
+- **`BudgetEngine`**：兒童佔床年齡門檻參數化（日本/韓國 6 歲 vs 歐洲 12 歲），全面去地域化。
+- **`RuleEvaluator` & `DiffEngine`**：輸出 0~100 評分、規則通過/失敗明細與標籤，並彙整 `SEATS_RELEASED`、`GUARANTEED_DEPARTURE`、`PRICE_DROP` 等差異報告。
+- **`src/notifier/`**：終端支援 `Rich → tabulate → plain text` 優雅降級；Webhook 支援 **Discord Rich Embed** 與 **Telegram Bot (HTML 安全跳脫)** 雙管道自動切換，提供緊急警報與 `--digest` 每日健康心跳。
 
-### 6. 上游清單發現與全管線串聯 (`src/discovery/`, `src/services/`)
-- **`scripts/inspect_xhr.py`**：Playwright JSON XHR 攔截傾印工具，已實測攔截雄獅旅遊 `grouplistinfojson` 真實端點。
-- **`src/discovery/`**：實作 `BaseAgencyAdapter`（Mode A `httpx` Direct XHR + Mode B Playwright Network Interception / DOM 備援）與五大旅行社 Adapter（`LionAdapter` 已實測於 `mode_a_xhr` 成功抓回 **170 筆** 2027/02 沖繩 ≤5 日真實行程）。
-- **`src/services/pipeline_service.py`**：串聯「清單抓取 → 7 天增量比對（已解析團號免重複呼叫 LLM）→ 機票基準 → 家族試算與告警去重」，單社失敗不中斷整體執行。
-
-### 5. 詳情頁解析與機票基準 (`src/extractor/`, `src/config.py`)
-- **`src/config.py`**：透過 `pydantic-settings` 統一管理 `.env` 與 YAML 設定，支援切換 Gemini API (`gemini/gemini-2.5-flash`) 與 Ollama (`ollama/qwen2.5:14b`)。
-- **`src/extractor/detail_crawler.py`**：封裝 Crawl4AI `AsyncWebCrawler` + `EXPAND_TABS_JS`（展開折疊面板與條款頁籤）+ `LLMExtractionStrategy`，輸出並驗證為 `OkinawaTourPackage`。
-- **`src/extractor/flight_benchmark.py`**：適配 `fast-flights 3.1.0` (`FlightQuery`, `create_query`, `get_flights`)，支援查詢 `TPE/KHH <-> OKA` 直飛機票基準並寫入 SQLite `flight_benchmarks`（已實測撈回 2027-02-04 ~ 2027-02-08 真實基準價：TPE NT\$ 20,450、KHH NT\$ 18,715）。
-- **`scripts/test_phase2_cli.py`**：Phase 2 整合 CLI 測試工具，串聯機票基準、詳情頁解析、SQLite 寫入與家族預算試算。
-
-### 7. FastAPI 服務、容器化與 n8n 監控工作流 (Phase 4)
-- **`src/main.py`**：實作 FastAPI 5 大 RESTful 端點（`/health`、`/api/v1/pipeline/daily-run`、`/api/v1/extract/single`、`/api/v1/rankings`、`/api/v1/tours/{tour_uid}/history`）與 `X-API-Key` 驗證機制。
-- **`Dockerfile` & `docker-compose.yml`**：整合 Playwright Chromium、中文字體、`/app/data/reports` 目錄、`HEALTHCHECK`、`mem_limit: 2g`、`shm_size: 2gb` 與 `n8n` `service_healthy` 依賴編排。
-- **`n8n/okinawa_monitor_workflow.json`**：可匯入 n8n 工作流，支援每日 09:00 / 21:00 (`Asia/Taipei`) 排程與手動觸發、`IF` 告警過濾、`Code` 節點排版 Top 5 排行與 `Telegram` 推播。
-- **`docs/api_spec.md`**：完整記錄 5 大 API 端點規格、認證方式與 4 張 SQLite 核心資料表約束。
-
----
-
-## 🗺️ 專案 Skills 與模組規範
-- [[skills/okinawa-discovery/SKILL|okinawa-discovery]]：五大旅行社雙模式（Direct XHR + Playwright Network Interception）清單撈取規範。
-- [[skills/okinawa-extractor/SKILL|okinawa-extractor]]：Crawl4AI + LLM（Gemini/Ollama）兩段式增量解析與 fast-flights 基準規範。
-- [[skills/okinawa-calculator/SKILL|okinawa-calculator]]：家族預算試算公式、佔床規則與告警偵測規範。
+### 5. CLI 入口、GitHub Actions 與 FastAPI 選配層 (`src/cli.py`, `.github/workflows/monitor.yml`, `src/main.py`)
+- **CLI 子指令**：`init-db`、`list-trips`、`scan`、`diff`、`test-scrape`。
+- **GitHub Actions**：每日兩次 (`cron: '17 1,13 * * *'`) + `workflow_dispatch` 手動觸發，自動掃描、通知並 Commit `data/radar.db` 回 Repo。
+- **FastAPI 服務**：補齊 `GET /api/v1/trips` 與所有端點 `?trip_id=` 支援，並完全相容既有 API 契約。

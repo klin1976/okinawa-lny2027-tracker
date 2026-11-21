@@ -48,6 +48,7 @@ def test_health_unauthenticated(api_client):
 def test_api_key_auth_rejects_missing_and_wrong_key(api_client):
     client, _ = api_client
     protected_calls = [
+        ("GET", "/api/v1/trips", None),
         ("POST", "/api/v1/pipeline/daily-run", {}),
         ("POST", "/api/v1/extract/single", {"url": "https://example.com/tour"}),
         ("GET", "/api/v1/rankings", None),
@@ -314,3 +315,64 @@ def test_tour_history_404_and_200(api_client):
     assert body["agency"] == "山富旅遊"
     assert len(body["price_snapshots"]) == 1
     assert body["price_snapshots"][0]["adult_price"] == 32000
+
+
+def test_list_trips_and_rankings_trip_id_filter(api_client):
+    client, db_path = api_client
+
+    resp_trips = client.get("/api/v1/trips", headers=_headers())
+    assert resp_trips.status_code == 200
+    trips_data = resp_trips.json()
+    assert trips_data["total"] >= 4
+    trip_ids = {t["trip_id"] for t in trips_data["trips"]}
+    assert {"okinawa_lny2027", "hokkaido_winter2027", "korea_spring2027", "europe_summer2027"}.issubset(trip_ids)
+
+    async def _seed_multi_trips():
+        await init_db(db_path)
+        repo = TourRepository(db_path)
+        item_oka = TourListItem(
+            trip_id="okinawa_lny2027",
+            agency="雄獅旅遊",
+            tour_code="OKA_M1",
+            tour_name="沖繩五日",
+            departure_date="2027-02-04",
+            days=5,
+            departure_airport="TPE",
+            adult_price=42000,
+            seats_available=15,
+            status="保證出團",
+            detail_url="https://example.com/oka_m1",
+        )
+        item_eu = TourListItem(
+            trip_id="europe_summer2027",
+            agency="雄獅旅遊",
+            tour_code="EU_M1",
+            tour_name="奧捷12日",
+            departure_date="2027-07-10",
+            days=12,
+            departure_airport="TPE",
+            adult_price=88000,
+            seats_available=15,
+            status="保證出團",
+            detail_url="https://example.com/eu_m1",
+        )
+        for item, airport in [(item_oka, "OKA"), (item_eu, "VIE")]:
+            uid = await repo.upsert_tour_from_list(
+                item, trip_id=item.trip_id, destination_airport=airport
+            )
+            await repo.insert_price_snapshot(
+                tour_uid=uid,
+                adult_price=item.adult_price,
+                seats_available=item.seats_available,
+                status=item.status,
+                estimated_family_total=None,
+            )
+
+    asyncio.run(_seed_multi_trips())
+
+    resp_eu = client.get("/api/v1/rankings?trip_id=europe_summer2027", headers=_headers())
+    assert resp_eu.status_code == 200
+    eu_body = resp_eu.json()
+    assert eu_body["total"] == 1
+    assert eu_body["rankings"][0]["trip_id"] == "europe_summer2027"
+    assert eu_body["rankings"][0]["days"] == 12

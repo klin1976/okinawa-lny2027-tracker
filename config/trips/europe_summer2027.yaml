@@ -1,0 +1,56 @@
+trip_id: "europe_summer2027"
+trip_name: "2027 暑假歐洲奧捷德瑞長程團"
+enabled: false
+
+destination:
+  country: "歐洲"
+  region_name: "奧捷/德瑞"
+  search_keywords:
+    - "奧捷"
+    - "德瑞"
+    - "歐洲"
+  exclude_keywords:
+    - "郵輪"
+    - "河輪"
+  airports:
+    - "VIE"
+    - "PRG"
+    - "ZRH"
+    - "FRA"
+  shopping_stop_keywords:
+    - "免稅店"
+    - "購物站"
+    - "精品outlet"
+
+schedule:
+  departure_date_start: "2027-07-01"
+  departure_date_end: "2027-08-25"
+  min_days: 9
+  max_days: 13
+  is_peak_season: true
+  peak_season_label: "2027 暑假長程旺季"
+
+flight_benchmark:
+  enabled: true
+  origins:
+    - "TPE"
+  sample_depart_date: "2027-07-10"
+  sample_return_date: "2027-07-21"
+  max_stops: 1
+
+party:
+  family_profile_ref: "config/family_profile.yaml"
+  child_bed_age_threshold: 12
+  tip_per_day_twd: 450
+  target_total_budget_twd: 950000
+
+scoring_rules:
+  prefer_direct_flight: 12
+  avoid_shopping_stop_bonus: 15
+  no_hotel_change_bonus: 5
+  early_out_late_back_bonus: 8
+  prefer_guaranteed_departure_bonus: 10
+  kid_friendly_attraction_bonus: 6
+  senior_restriction_penalty: -5
+  too_many_self_paid_meals_penalty: -5
+  below_budget_bonus: 12

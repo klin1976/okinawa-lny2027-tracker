@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -23,8 +24,16 @@ class SettourAdapter(BaseAgencyAdapter):
         agency_config: Optional[Dict[str, Any]] = None,
         common_filters: Optional[Dict[str, Any]] = None,
         concurrency_config: Optional[Dict[str, Any]] = None,
+        trip_config: Optional[Any] = None,
+        allow_playwright_fallback: bool = True,
     ):
-        super().__init__(agency_config, common_filters, concurrency_config)
+        super().__init__(
+            agency_config,
+            common_filters,
+            concurrency_config,
+            trip_config=trip_config,
+            allow_playwright_fallback=allow_playwright_fallback,
+        )
         self.timeout_seconds = float((agency_config or {}).get("timeout_seconds", 15))
 
     async def _post_json(
@@ -40,36 +49,45 @@ class SettourAdapter(BaseAgencyAdapter):
                 f"東南旅遊請求逾時 ({self.timeout_seconds}s)，可能遭 WAF/Tarpit 阻塞: {url}"
             ) from exc
 
-    def _build_payload(self, page_index: int = 1) -> Dict[str, Any]:
-        date_range = self.common_filters.get("departure_date_range", {})
+    def _build_payload(self, keyword: str = "", page_index: int = 1) -> Dict[str, Any]:
+        start_date, end_date = self.get_default_query_date_range()
         return {
-            "keyword": "沖繩",
-            "beginDate": date_range.get("start", "2027-02-01"),
-            "endDate": date_range.get("end", "2027-02-14"),
-            "days": self.common_filters.get("max_days", 5),
+            "keyword": keyword,
+            "beginDate": start_date,
+            "endDate": end_date,
+            "days": self.get_max_days(),
             "page": page_index,
             "pageSize": 20,
         }
 
     async def fetch_mode_a_xhr(self) -> List[TourListItem]:
         all_items: List[TourListItem] = []
+        seen_keys: set[tuple[str, str]] = set()
         headers = {
             "Origin": "https://trip.settour.com.tw",
             "Referer": "https://trip.settour.com.tw/search",
         }
-        for page_idx in range(1, 6):
-            payload = await self._post_json(
-                self.XHR_ENDPOINT,
-                json_body=self._build_payload(page_idx),
-                headers=headers,
-            )
-            items = self.parse_xhr_payload(payload)
-            if not items:
-                break
-            all_items.extend(items)
-            if len(items) < 20:
-                break
-            await self.jitter_sleep()
+        keywords = self.get_search_keywords() or [""]
+        for kw_idx, kw in enumerate(keywords):
+            if kw_idx > 0:
+                await self.jitter_sleep()
+            for page_idx in range(1, 6):
+                payload = await self._post_json(
+                    self.XHR_ENDPOINT,
+                    json_body=self._build_payload(keyword=kw, page_index=page_idx),
+                    headers=headers,
+                )
+                items = self.parse_xhr_payload(payload)
+                if not items:
+                    break
+                for item in items:
+                    key = (item.tour_code, item.departure_date)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        all_items.append(item)
+                if len(items) < 20:
+                    break
+                await self.jitter_sleep()
         return all_items
 
     def parse_xhr_payload(self, payload: Any) -> List[TourListItem]:
@@ -86,7 +104,10 @@ class SettourAdapter(BaseAgencyAdapter):
         if not isinstance(raw_list, list):
             return []
 
+        min_days = self.get_min_days()
+        max_days = self.get_max_days()
         results: List[TourListItem] = []
+
         for row in raw_list:
             if not isinstance(row, dict):
                 continue
@@ -101,7 +122,7 @@ class SettourAdapter(BaseAgencyAdapter):
             )
             days = self.parse_int_safe(row.get("prodDays") or row.get("days")) or 0
 
-            if not (tour_code and tour_name and dep_date) or days > 5 or days < 1:
+            if not (tour_code and tour_name and dep_date) or days < min_days or days > max_days:
                 continue
 
             adult_price = self.parse_int_safe(
@@ -131,6 +152,7 @@ class SettourAdapter(BaseAgencyAdapter):
             )
             results.append(
                 TourListItem(
+                    trip_id=self.trip_id,
                     agency=self.agency_name,
                     tour_code=tour_code,
                     tour_name=tour_name,

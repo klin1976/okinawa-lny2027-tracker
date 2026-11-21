@@ -3,13 +3,14 @@ from pydantic import BaseModel, Field
 
 
 class TourListItem(BaseModel):
+    trip_id: str = Field("default", description="所屬旅遊專案 ID")
     agency: Literal["可樂旅遊", "東南旅遊", "雄獅旅遊", "山富旅遊", "世邦旅遊"] = Field(
         ..., description="旅行社名稱"
     )
     tour_code: str = Field(..., description="唯一識別碼（團號/產品代碼，用於 DB 去重）")
     tour_name: str = Field(..., description="行程標題")
     departure_date: str = Field(..., description="出發日期 YYYY-MM-DD")
-    days: int = Field(..., le=5, description="行程天數，過濾器硬限制 <= 5")
+    days: int = Field(..., ge=1, le=30, description="行程天數（支援 1 至 30 天各國長短程行程）")
     departure_airport: str = Field(..., description="出發機場代碼，如 TPE / KHH / RMQ / OTHER")
     adult_price: Optional[int] = Field(None, description="清單頁即時成人團費（台幣整數）")
     seats_available: Optional[int] = Field(None, description="清單頁即時可售機位")

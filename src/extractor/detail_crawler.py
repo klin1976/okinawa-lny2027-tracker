@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -13,11 +14,14 @@ from crawl4ai import (
 )
 
 from src.config import Settings, get_settings
-from src.schemas.tour_schema import OkinawaTourPackage
+from src.schemas.tour_schema import TourPackage
+
+if TYPE_CHECKING:
+    from src.schemas.trip_schema import TripConfig
 
 logger = logging.getLogger(__name__)
 
-# 針對五大旅行社詳情頁常見的折疊面板、頁籤（行程明細、費用說明、高齡與兒童條款、購物站備註）進行展開
+# 針對旅行社詳情頁常見的折疊面板、頁籤（行程明細、費用說明、高齡與兒童條款、購物站備註）進行展開
 EXPAND_TABS_JS = """
 (() => {
     const selectors = [
@@ -47,25 +51,47 @@ EXPAND_TABS_JS = """
 })();
 """
 
-EXTRACTION_INSTRUCTION = """
-你是一位專業的台灣旅遊產品結構化資料擷取專家。請仔細閱讀這份台灣旅行社「沖繩團體旅遊」詳情頁的完整內容，
+
+def build_extraction_instruction(
+    trip_config: Optional["TripConfig"] = None,
+    agency_hint: Optional[str] = None,
+) -> str:
+    """依據 TripConfig 動態產生跨國通用團體旅遊詳情頁 LLM 擷取指令。"""
+    if trip_config is not None:
+        dest_label = f"{trip_config.destination.country} {trip_config.destination.region_name}".strip()
+        airports_str = "/".join(trip_config.destination.airports) if trip_config.destination.airports else "當地主要機場"
+        peak_label = trip_config.schedule.peak_season_label or "連假／旅遊旺季"
+        shopping_examples = "、".join(trip_config.destination.shopping_stop_keywords[:6])
+    else:
+        dest_label = "海外團體旅遊"
+        airports_str = "目的地機場 IATA 代碼"
+        peak_label = "連假／旅遊旺季"
+        shopping_examples = "免稅店、購物站、人蔘店、保肝店、乳膠店、光伸免稅店"
+
+    prefix = f"本頁面來自旅行社「{agency_hint}」。\n" if agency_hint else ""
+    return prefix + f"""你是一位專業的台灣旅遊產品結構化資料擷取專家。請仔細閱讀這份台灣旅行社「{dest_label}」詳情頁的完整內容，
 並嚴格按照 JSON Schema 提取所有關鍵資訊，特別注意以下細節：
-1. **航班與包機資訊**：擷取去程與回程的航空公司、班號、起降時間、機場代碼（TPE/KHH/RMQ/OKA）、是否為廉航(is_lcc)、是否標註春節包機/加班機(is_charter_flight)、託運行李公斤數與機上餐食。
+1. **航班與轉機/包機資訊**：擷取去程與回程的航空公司、班號、起降時間、機場代碼（出發如 TPE/KHH/RMQ/TSA，抵達如 {airports_str}）、轉機次數 (stops，直飛為 0)、是否直飛 (is_direct)、是否為廉航 (is_lcc)、是否標註為包機/加班機 (is_charter_flight)、託運行李公斤數與機上餐食。
 2. **價格與年齡/佔床條款**：
    - 成人雙人房佔床每人團費 (adult_twin_price，台幣整數)。
    - 兒童佔床與不佔床的價格或價差 (child_with_bed_price, child_no_bed_price, child_no_bed_diff)，以及年齡限制文字 (child_no_bed_age_rule)。
    - 未滿2歲嬰兒報價 (infant_under_2_price)。
    - 高齡/長輩條款 (senior_age_threshold, senior_companion_rule, senior_insurance_note, senior_price_adjustment)。
    - 領隊導遊司機每日小費 (tip_per_day_twd)、單人房差 (single_room_supplement)、三人房或加床規定 (triple_room_policy)、報名訂金 (deposit_per_person)。
+   - 若涉及「{peak_label}」加價、高訂金或嚴格取消規定，請寫入 peak_season_surcharge_note 與 peak_season_surcharge_included。
 3. **每日行程與購物站檢查**：
-   - 逐日列出景點名稱、所屬分區、門票包含狀態、以及**是否為購物站**（例如：光伸免稅店、藥妝免稅店、珍珠店、乳膠店等，務必將 `is_shopping_stop` 設為 `true`）。
+   - 逐日列出景點名稱、所屬城市或地理分區、門票包含狀態、以及**是否為購物站**（例如：{shopping_examples}等，務必將 `is_shopping_stop` 設為 `true`）。
    - 統計每日三餐安排與自理餐數量 (self_paid_meal_count)，以及當晚候選飯店（拆開「或」字放入 `candidate_hotels`）。
 4. **比較旗標 (comparison_flags)**：
-   - 若行程包含任何免稅店/購物站，`has_shopping_station` 必須為 `true`。
+   - 若行程包含任何免稅店／購物站，`has_shopping_station` 必須為 `true`。
    - 若全程連住同一間飯店免搬行李，`no_hotel_change` 設為 `true`。
-   - 標註適合兒童的亮點標籤（如：美麗海水族館、DMM水族館、玉泉洞、星野、戲水）。
+   - 標註適合兒童或親子的亮點標籤 (kid_friendly_tags，如主題樂園、水族館、動物園、戲雪、溫泉體驗等)。
 若某欄位在頁面中完全未提及，請填 `null`（布林值依預設或頁面實際敘述判斷），絕不可憑空捏造價格或航班。
 """
+
+
+# 向後相容預設常數
+EXTRACTION_INSTRUCTION = build_extraction_instruction()
 
 
 class DetailExtractionError(RuntimeError):
@@ -97,15 +123,20 @@ class DetailCrawler:
             kwargs["base_url"] = base_url
         return LLMConfig(**kwargs)
 
-    def _build_extraction_strategy(self, agency_hint: Optional[str] = None) -> LLMExtractionStrategy:
+    def _build_extraction_strategy(
+        self,
+        agency_hint: Optional[str] = None,
+        trip_config: Optional["TripConfig"] = None,
+    ) -> LLMExtractionStrategy:
         llm_config = self._build_llm_config()
-        instruction = EXTRACTION_INSTRUCTION
-        if agency_hint:
-            instruction = f"本頁面來自旅行社「{agency_hint}」。\n" + instruction
+        instruction = build_extraction_instruction(
+            trip_config=trip_config,
+            agency_hint=agency_hint,
+        )
 
         return LLMExtractionStrategy(
             llm_config=llm_config,
-            schema=OkinawaTourPackage.model_json_schema(),
+            schema=TourPackage.model_json_schema(),
             extraction_type="schema",
             instruction=instruction,
             chunk_token_threshold=6000,
@@ -120,8 +151,9 @@ class DetailCrawler:
         raw_content: Optional[str],
         source_url: Optional[str] = None,
         agency_hint: Optional[str] = None,
-    ) -> OkinawaTourPackage:
-        """將 LLM 回傳的 JSON 字串解析並驗證為 OkinawaTourPackage。"""
+        trip_config: Optional["TripConfig"] = None,
+    ) -> TourPackage:
+        """將 LLM 回傳的 JSON 字串解析並驗證為 TourPackage。"""
         if not raw_content or not raw_content.strip():
             raise DetailExtractionError("LLM 未回傳任何結構化內容 (extracted_content 為空)。")
 
@@ -131,7 +163,6 @@ class DetailCrawler:
             raise DetailExtractionError(f"LLM 回傳非合法 JSON：{exc}") from exc
 
         if isinstance(parsed, list):
-            # Crawl4AI chunking 模式下可能回傳 dict 陣列，過濾出非錯誤物件
             valid_items = [item for item in parsed if isinstance(item, dict) and not item.get("error")]
             if not valid_items:
                 raise DetailExtractionError(f"LLM 擷取結果陣列無有效資料：{parsed}")
@@ -147,18 +178,27 @@ class DetailCrawler:
             data["source_url"] = source_url
         if agency_hint and not data.get("agency"):
             data["agency"] = agency_hint
+        if trip_config is not None:
+            data["trip_id"] = trip_config.trip_id
+            data.setdefault("destination_country", trip_config.destination.country)
+            data.setdefault("destination_region", trip_config.destination.region_name)
+            if trip_config.schedule.is_peak_season:
+                data.setdefault("is_peak_season", True)
 
-        # 若 days 未填或超出 1-5 限制，於 Pydantic 驗證前做安全防衛或讓驗證反映錯誤
-        return OkinawaTourPackage.model_validate(data)
+        return TourPackage.model_validate(data)
 
     async def parse_url(
         self,
         url: str,
         agency_hint: Optional[str] = None,
         timeout_ms: int = 60000,
-    ) -> OkinawaTourPackage:
-        """爬取指定詳情頁網址並透過 LLM 解析為 OkinawaTourPackage。"""
-        strategy = self._build_extraction_strategy(agency_hint=agency_hint)
+        trip_config: Optional["TripConfig"] = None,
+    ) -> TourPackage:
+        """爬取指定詳情頁網址並透過 LLM 解析為 TourPackage。"""
+        strategy = self._build_extraction_strategy(
+            agency_hint=agency_hint,
+            trip_config=trip_config,
+        )
         browser_config = BrowserConfig(
             headless=self.settings.crawler_headless,
             verbose=False,
@@ -183,5 +223,6 @@ class DetailCrawler:
             result.extracted_content,
             source_url=url,
             agency_hint=agency_hint,
+            trip_config=trip_config,
         )
         return package

@@ -1,27 +1,31 @@
 from __future__ import annotations
+
 import asyncio
 import hashlib
 import logging
 import random
 import re
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import httpx
 from playwright.async_api import async_playwright
 
 from src.schemas.discovery_schema import TourListItem
 
+if TYPE_CHECKING:
+    from src.schemas.trip_schema import TripConfig
+
 logger = logging.getLogger(__name__)
 
 
 class AgencyFetchError(RuntimeError):
-    """單一旅行社雙模式皆抓取失敗時拋出。"""
+    """單一旅行社可用模式皆抓取失敗時拋出。"""
 
 
 class BaseAgencyAdapter(ABC):
-    """五大旅行社上游清單自動撈取抽象基底類別（支援 Mode A Direct XHR + Mode B Playwright 備援）。"""
+    """五大旅行社上游清單自動撈取抽象基底類別（支援 Mode A Direct XHR/SSR + Mode B Playwright 備援）。"""
 
     agency_key: str = ""
     agency_name: str = ""
@@ -31,9 +35,27 @@ class BaseAgencyAdapter(ABC):
         agency_config: Optional[Dict[str, Any]] = None,
         common_filters: Optional[Dict[str, Any]] = None,
         concurrency_config: Optional[Dict[str, Any]] = None,
+        trip_config: Optional["TripConfig"] = None,
+        allow_playwright_fallback: bool = True,
     ):
         self.agency_config = agency_config or {}
-        self.common_filters = common_filters or {}
+        self.trip_config = trip_config
+        self.allow_playwright_fallback = allow_playwright_fallback
+
+        merged_filters = dict(common_filters or {})
+        if trip_config is not None:
+            trip_filters = trip_config.to_common_filters()
+            for k, v in trip_filters.items():
+                merged_filters.setdefault(k, v)
+            # 若傳入 TripConfig，以 TripConfig 專案設定覆寫目的地與日期限制
+            merged_filters.update(trip_filters)
+
+        self.common_filters: Dict[str, Any] = merged_filters
+        self.trip_id: str = (
+            trip_config.trip_id
+            if trip_config is not None
+            else str(self.common_filters.get("trip_id") or "default")
+        )
         self.concurrency_config = concurrency_config or {}
 
         self.search_url: str = self.agency_config.get("search_url", "")
@@ -41,6 +63,34 @@ class BaseAgencyAdapter(ABC):
         self.timeout_seconds: float = float(self.agency_config.get("timeout_seconds", 30))
         self.jitter_min: float = float(self.concurrency_config.get("jitter_min_seconds", 2.0))
         self.jitter_max: float = float(self.concurrency_config.get("jitter_max_seconds", 4.5))
+
+    def get_search_keywords(self) -> List[str]:
+        raw = self.common_filters.get("destination_keywords") or []
+        return [str(k).strip() for k in raw if str(k).strip()]
+
+    def get_exclude_keywords(self) -> List[str]:
+        raw = self.common_filters.get("exclude_keywords") or []
+        return [str(k).strip() for k in raw if str(k).strip()]
+
+    def get_date_range(self) -> Tuple[str, str]:
+        date_range = self.common_filters.get("departure_date_range") or {}
+        start = str(date_range.get("start") or "").strip()
+        end = str(date_range.get("end") or "").strip()
+        return start, end
+
+    def get_default_query_date_range(self) -> Tuple[str, str]:
+        start, end = self.get_date_range()
+        if not start:
+            start = datetime.now().strftime("%Y-%m-%d")
+        if not end:
+            end = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
+        return start, end
+
+    def get_min_days(self) -> int:
+        return max(1, int(self.common_filters.get("min_days", 1)))
+
+    def get_max_days(self) -> int:
+        return min(30, int(self.common_filters.get("max_days", 30)))
 
     @staticmethod
     def compute_raw_hash(
@@ -81,7 +131,6 @@ class BaseAgencyAdapter(ABC):
         if not raw_date:
             return None
         text = str(raw_date).strip()
-        # 支援 YYYY-MM-DD, YYYY/MM/DD, YYYYMMDD
         m = re.search(r"(\d{4})[-/]?(\d{2})[-/]?(\d{2})", text)
         if not m:
             return None
@@ -92,30 +141,41 @@ class BaseAgencyAdapter(ABC):
         await asyncio.sleep(delay)
 
     def apply_common_filters(self, items: List[TourListItem]) -> List[TourListItem]:
-        """依據 config/agencies.yaml 的 common_filters 過濾天數、出發區間與沖繩關鍵字。"""
-        max_days = int(self.common_filters.get("max_days", 5))
-        date_range = self.common_filters.get("departure_date_range", {})
-        start_str = date_range.get("start", "2027-02-01")
-        end_str = date_range.get("end", "2027-02-14")
-        keywords = self.common_filters.get("destination_keywords", ["沖繩", "琉球", "OKA"])
+        """依據 TripConfig 或 common_filters 過濾天數區間、出發日期、關鍵字與排除字詞。"""
+        min_days = self.get_min_days()
+        max_days = self.get_max_days()
+        start_str, end_str = self.get_date_range()
+        keywords = self.get_search_keywords()
+        exclude_keywords = self.get_exclude_keywords()
 
         filtered: List[TourListItem] = []
+        seen: set[tuple[str, str]] = set()
         for item in items:
-            if item.days > max_days or item.days < 1:
+            if item.days < min_days or item.days > max_days:
                 continue
             if start_str and item.departure_date < start_str:
                 continue
             if end_str and item.departure_date > end_str:
                 continue
-            if keywords and not any(kw.lower() in item.tour_name.lower() for kw in keywords):
+            title_lower = item.tour_name.lower()
+            if keywords and not any(kw.lower() in title_lower for kw in keywords):
                 continue
+            if exclude_keywords and any(ex.lower() in title_lower for ex in exclude_keywords):
+                continue
+
+            dedup_key = (item.tour_code, item.departure_date)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+
+            item.trip_id = self.trip_id
             filtered.append(item)
         return filtered
 
     async def fetch_tours(self) -> Tuple[List[TourListItem], str]:
         """
         雙模式自動容錯執行清單撈取：
-        優先嘗試 Mode A (Direct XHR Replay)，若失敗或遇 WAF/403 則自動降級至 Mode B (Playwright Interception)。
+        優先嘗試 Mode A (Direct XHR/SSR)，若失敗且允許降級則自動切換至 Mode B (Playwright Interception)。
         回傳: (過濾後的 TourListItem 清單, 實際採用的模式 'mode_a_xhr' | 'mode_b_playwright')
         """
         mode_a_error: Optional[Exception] = None
@@ -125,10 +185,19 @@ class BaseAgencyAdapter(ABC):
                 return self.apply_common_filters(items), "mode_a_xhr"
         except Exception as exc:
             mode_a_error = exc
+            if not self.allow_playwright_fallback:
+                raise AgencyFetchError(
+                    f"[{self.agency_name}] Mode A 失敗且已停用 Playwright 降級 (--no-playwright): {exc}"
+                ) from exc
             logger.warning(
-                "[%s] Mode A (Direct XHR) 失敗，降級切換至 Mode B (Playwright): %s",
+                "[%s] Mode A (Direct XHR/SSR) 失敗，降級切換至 Mode B (Playwright): %s",
                 self.agency_name,
                 exc,
+            )
+
+        if not self.allow_playwright_fallback:
+            raise AgencyFetchError(
+                f"[{self.agency_name}] Mode A 無結果且已停用 Playwright 降級 (--no-playwright)"
             )
 
         try:
@@ -141,7 +210,7 @@ class BaseAgencyAdapter(ABC):
 
     @abstractmethod
     async def fetch_mode_a_xhr(self) -> List[TourListItem]:
-        """Mode A: 使用 httpx.AsyncClient 直接呼叫旅行社搜尋 XHR API。"""
+        """Mode A: 使用 httpx.AsyncClient 直接呼叫旅行社搜尋 XHR API 或 SSR HTML。"""
 
     async def fetch_mode_b_playwright(self) -> List[TourListItem]:
         """

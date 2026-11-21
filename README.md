@@ -1,65 +1,93 @@
 ---
-title: "2027 春節沖繩旅遊跨社比價與監控系統 (okinawa-lny2027-tracker)"
+title: "通用多目的地旅遊跨社比價與異動監控雷達 (travel-radar)"
 aliases:
   - README
   - 專案說明
+  - travel-radar
   - okinawa-lny2027-tracker
 tags:
   - project-root
   - documentation
   - overview
-  - okinawa-2027
+  - travel-radar
 type: documentation
 created: 2026-11-19
+updated: 2026-11-21
 ---
 
-# 2027 春節沖繩旅遊跨社比價與監控系統 (`okinawa-lny2027-tracker`)
+# 通用多目的地旅遊跨社比價與異動監控雷達 (`travel-radar`)
 
-> 🧭 **知識圖譜導航**：[[00_Index|🗺️ 00_Index (知識圖譜總索引 MOC)]] ｜ [[2027_TravelLtinerary|📋 系統計畫規格書]] ｜ [[AGENTS|🤖 多代理協作架構]] ｜ [[docs/api_spec|🔌 API 與資料規格]] ｜ [[ConversationRecord|📝 對話紀錄]] ｜ [[REMINDER|⚠️ 提醒事項]]
+> 🧭 **知識圖譜導航**：[[00_Index|🗺️ 00_Index (知識圖譜總索引 MOC)]] ｜ [[2027_TravelLtinerary|📋 系統計畫規格書]] ｜ [[AGENTS|🤖 多代理協作架構]] ｜ [[docs/api_spec|🔌 API 與資料規格]] ｜ [[PROJECT_COCKPIT|🛸 專案駕駛艙]] ｜ [[ConversationRecord|📝 對話紀錄]]
 
-自動化追蹤 **2027 年農曆春節區間（2027-02-01 至 2027-02-14）** 臺灣五大旅行社（可樂、東南、雄獅、山富、世邦）的沖繩 5 天（含）以下團體行程與同期 Google Flights 直飛機票基準價，並依自訂家族成員結構計算真實總預算與每日異常告警。
-
----
-
-## 🗺️ 系統知識圖譜索引 (Knowledge Graph)
-
-本專案全面支援 Obsidian 知識圖譜導航與雙向鏈結，請優先參閱 [[00_Index|00_Index (知識圖譜總索引 MOC)]] 探索整體架構關聯。
+參考 [`klin1976/tech-training-radar`](https://github.com/klin1976/tech-training-radar) 的 **Zero-Infra 雷達架構**，將原本限定 2027 春節沖繩的比價系統全面重構為 **不限定國家、地點、天數（1~30 天）與季節** 的多目的地旅遊跨社比價與異動監控雷達。支援台灣五大旅行社（雄獅、山富、世邦、可樂、東南）雙模式爬取、Google Flights 同期機票基準、依國別差異化調整的家族真實總預算試算、0~100 綜合規則評分、以及 Discord / Telegram 雙管道即時告警與每日健康心跳回報。
 
 ---
 
-## ⚙️ 技術架構
+## 🚀 Zero-Infra 快速上手 (CLI-First)
 
-| 層級 | 技術 | 關聯文檔 |
-|------|------|---------|
-| 後端 / API | Python 3.11+、FastAPI + Uvicorn | [[docs/api_spec]] |
-| 爬蟲與瀏覽器 | `crawl4ai>=0.9.0`、Playwright (Chromium)、`httpx`、`fast-flights>=3.1.0` | [[skills/okinawa-discovery/SKILL]], [[skills/okinawa-extractor/SKILL]] |
-| 資料模型與設定 | Pydantic v2、PyYAML | [[2027_TravelLtinerary]] |
-| 資料庫 | SQLite 3 (`aiosqlite` / `sqlite3`) | [[docs/api_spec]] |
-| LLM 解析 | Gemini API (`gemini/gemini-2.5-flash`) 或 Ollama (`ollama/qwen2.5:14b`) | [[skills/okinawa-extractor/SKILL]] |
-| 預算與告警 | 家族計價引擎、小費乘算、佔床規則、異動偵測 | [[skills/okinawa-calculator/SKILL]] |
-| 容器與排程 | Docker、Docker Compose、n8n (HTTP Request 觸發) | [[2027_TravelLtinerary]] |
+### 1. 本機安裝與資料庫初始化
+```bash
+python -m venv .venv
+.venv\Scripts\activate      # Windows
+pip install -r requirements.txt
+
+# 初始化或自動遷移 SQLite 資料庫 (預設 data/radar.db)
+python -m src.cli init-db
+```
+
+### 2. 常用 CLI 指令
+```bash
+# 查看目前設定的所有多目的地旅遊專案 (config/trips/*.yaml)
+python -m src.cli list-trips
+
+# 執行所有已啟用 (enabled: true) 專案的巡檢、評分、差異比對與雙管道推播
+python -m src.cli scan --all --notify --digest
+
+# 針對特定國家專案掃描（支援無 LLM 的 Zero-Infra 快速模式與關閉 Playwright）
+python -m src.cli scan --trip europe_summer2027 --skip-llm --no-playwright
+
+# 查詢過去 24 小時內的價格、機位與狀態異動歷史
+python -m src.cli diff --hours 24
+
+# 單一旅行社獨立爬蟲除錯（不寫入資料庫）
+python -m src.cli test-scrape --agency lion --trip okinawa_lny2027
+```
 
 ---
 
-## 🤖 AI 多代理協作
+## 🌍 新增旅遊目的地教學 (`config/trips/*.yaml`)
 
-本專案使用 AI 多代理協作架構（Dual-Model Routing Workflow），詳見 [[AGENTS|AGENTS.md (AI 多代理架構與路由手冊)]]。
+在 `config/trips/` 下新增任意 YAML（系統隨附 `okinawa_lny2027.yaml`、`hokkaido_winter2027.yaml`、`korea_spring2027.yaml`、`europe_summer2027.yaml` 四種範例），設定 `enabled: true` 即可納入自動巡檢：
 
-- **agent-orchestrator** (Pro): 任務拆解、DAG 排程與跨層協調
-- **agent-backend** (Flash): FastAPI、爬蟲 Adapter、Crawl4AI、預算引擎實作
-- **agent-database** (Flash): SQLite 結構與 Repository 實作
-- **agent-qa** (Flash): pytest 單元測試與封包檢驗
-- **agent-docs** (Flash): 規格文件、api_spec.md 與 Obsidian 圖譜維護
+- `destination.search_keywords` / `exclude_keywords`：控制搜尋關鍵字與標題排除（如郵輪、自由行）。
+- `schedule.min_days` ~ `max_days`：支援 `1 ~ 30` 天各類短中長程行程。
+- `flight_benchmark.max_stops`：短程設 `0`（直飛），歐美長程可設 `1`（轉機）。
+- `party.child_bed_age_threshold`：支援依各國飯店規定調整（日本/韓國設 `6`，歐美可設 `12`）。
+- `party.tip_per_day_twd` / `target_total_budget_twd`：覆寫該國家每日小費標準與家族目標總預算。
 
 ---
 
-## 📚 開發與規格規範
+## 🤖 GitHub Actions 全自動排程（零伺服器成本）
 
-- **知識總索引 (MOC)**：[[00_Index|00_Index.md]] / [[MOC|MOC.md]]
-- **系統計畫規格書**：[[2027_TravelLtinerary|2027_TravelLtinerary.md]]
-- **API 與資料交互規格**：[[docs/api_spec|docs/api_spec.md]]
-- **模組一 (清單撈取)**：[[skills/okinawa-discovery/SKILL|skills/okinawa-discovery/SKILL.md]]
-- **模組二 (詳情解析與機票)**：[[skills/okinawa-extractor/SKILL|skills/okinawa-extractor/SKILL.md]]
-- **模組三 (預算試算與告警)**：[[skills/okinawa-calculator/SKILL|skills/okinawa-calculator/SKILL.md]]
-- **專案對話與歷程**：[[ConversationRecord|ConversationRecord.md]]
-- **關閉提醒事項**：[[REMINDER|REMINDER.md]]
+`.github/workflows/monitor.yml` 預設於每日台灣時間 `09:17` 與 `21:17` 自動執行巡檢並將更新後的 `data/radar.db` Commit 回儲存庫。請至 GitHub Repo 的 **Settings → Secrets and variables → Actions** 設定以下機密變數（推播依設定自動啟用，皆可單獨或同時使用）：
+
+| Secret 名稱 | 說明 | 必填 |
+|---|---|---|
+| `DISCORD_WEBHOOK_URL` | Discord 頻道 Webhook URL（發送 Rich Embed 警報與每日摘要） | 選填 |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token | 選填 |
+| `TELEGRAM_CHAT_ID` | Telegram 接收群組或個人 Chat ID | 選填 |
+| `GEMINI_API_KEY` | Gemini API 金鑰（未設定時自動跳過 LLM 詳情解析，僅執行清單與試算） | 選填 |
+
+---
+
+## ⚙️ 技術架構（四層單向雷達管線 + 選配 FastAPI）
+
+| 層級 | 模組與技術 | 說明 |
+|---|---|---|
+| CLI 入口 | `src/cli.py` | `init-db` / `list-trips` / `scan` / `diff` / `test-scrape` |
+| 上游擷取 | `src/discovery/` (`httpx` + Playwright 混合) | `httpx` Direct XHR/SSR 優先，必要時降級 Playwright |
+| 詳情與機票 | `src/extractor/` (`Crawl4AI` + `fast-flights`) | 動態國家 Prompt、7 天 LLM 快取、多航線與轉機基準 |
+| 試算與評估 | `src/calculator/` + `src/evaluator/` | `BudgetEngine`、`RuleEvaluator` (0~100 評分)、`AlertDetector`、`DiffEngine` |
+| 持久化與審計 | `src/db/` (SQLite WAL + `checkpoint_db`) | `tours`、`price_snapshots` (事件驅動)、`flight_benchmarks`、`alert_logs`、`scan_history` |
+| 通知與報表 | `src/notifier/` (`Rich` / `tabulate` + Webhook) | Discord + Telegram 緊急警報與 `--digest` 每日健康心跳 |
+| 選配 Web API | `src/main.py` (FastAPI + Docker) | 提供 `/api/v1/trips`、`/api/v1/rankings?trip_id=` 等 REST 端點 |

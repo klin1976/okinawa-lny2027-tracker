@@ -6,6 +6,7 @@ from src.discovery.fourp_adapter import FourPAdapter
 from src.discovery.lion_adapter import LionAdapter
 from src.discovery.richmont_adapter import RichmontAdapter
 from src.discovery.settour_adapter import SettourAdapter
+from src.schemas.trip_schema import TripConfig
 
 ADAPTER_REGISTRY: Dict[str, Type[BaseAgencyAdapter]] = {
     "lion": LionAdapter,
@@ -16,7 +17,12 @@ ADAPTER_REGISTRY: Dict[str, Type[BaseAgencyAdapter]] = {
 }
 
 
-def build_enabled_adapters(agencies_cfg: Dict[str, Any], target_keys: Optional[List[str]] = None) -> List[BaseAgencyAdapter]:
+def build_enabled_adapters(
+    agencies_cfg: Dict[str, Any],
+    target_keys: Optional[List[str]] = None,
+    trip_config: Optional[TripConfig] = None,
+    allow_playwright_fallback: bool = True,
+) -> List[BaseAgencyAdapter]:
     common_filters = agencies_cfg.get("common_filters", {})
     concurrency_cfg = agencies_cfg.get("concurrency", {})
     agencies_map = agencies_cfg.get("agencies", {})
@@ -35,6 +41,8 @@ def build_enabled_adapters(agencies_cfg: Dict[str, Any], target_keys: Optional[L
                     agency_config=cfg,
                     common_filters=common_filters,
                     concurrency_config=concurrency_cfg,
+                    trip_config=trip_config,
+                    allow_playwright_fallback=allow_playwright_fallback,
                 )
             )
     return adapters

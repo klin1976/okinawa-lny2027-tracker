@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -21,12 +22,12 @@ class FourPAdapter(BaseAgencyAdapter):
 
     SEARCH_ENDPOINT = "https://www.4p.com.tw/Products/Group/Search"
 
-    def _build_search_params(self, page_index: int = 1) -> Dict[str, Any]:
-        date_range = self.common_filters.get("departure_date_range", {})
+    def _build_search_params(self, keyword: str = "", page_index: int = 1) -> Dict[str, Any]:
+        start_date, end_date = self.get_default_query_date_range()
         return {
-            "kwd": "沖繩",
-            "sdate": date_range.get("start", "2027-02-01"),
-            "edate": date_range.get("end", "2027-02-14"),
+            "kwd": keyword,
+            "sdate": start_date,
+            "edate": end_date,
             "page": page_index,
         }
 
@@ -40,30 +41,34 @@ class FourPAdapter(BaseAgencyAdapter):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Referer": "https://www.4p.com.tw/",
         }
+        keywords = self.get_search_keywords() or [""]
 
         async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True) as client:
-            for page_idx in range(1, 11):
-                resp = await client.get(
-                    search_url,
-                    params=self._build_search_params(page_idx),
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                items = self.parse_dom_fallback(resp.text)
-                if not items:
-                    break
+            for kw_idx, kw in enumerate(keywords):
+                if kw_idx > 0:
+                    await self.jitter_sleep()
+                for page_idx in range(1, 11):
+                    resp = await client.get(
+                        search_url,
+                        params=self._build_search_params(keyword=kw, page_index=page_idx),
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
+                    items = self.parse_dom_fallback(resp.text)
+                    if not items:
+                        break
 
-                new_count = 0
-                for item in items:
-                    key = (item.tour_code, item.departure_date)
-                    if key not in seen_keys:
-                        seen_keys.add(key)
-                        all_items.append(item)
-                        new_count += 1
+                    new_count = 0
+                    for item in items:
+                        key = (item.tour_code, item.departure_date)
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            all_items.append(item)
+                            new_count += 1
 
-                if new_count == 0 or not self._has_next_page(resp.text, page_idx + 1):
-                    break
-                await self.jitter_sleep()
+                    if new_count == 0 or not self._has_next_page(resp.text, page_idx + 1):
+                        break
+                    await self.jitter_sleep()
 
         return all_items
 
@@ -88,7 +93,10 @@ class FourPAdapter(BaseAgencyAdapter):
         if not isinstance(raw_list, list):
             return []
 
+        min_days = self.get_min_days()
+        max_days = self.get_max_days()
         results: List[TourListItem] = []
+
         for row in raw_list:
             if not isinstance(row, dict):
                 continue
@@ -101,7 +109,7 @@ class FourPAdapter(BaseAgencyAdapter):
             dep_date = self.normalize_date(row.get("departDate") or row.get("date"))
             days = self.parse_int_safe(row.get("days")) or 0
 
-            if not (tour_code and tour_name and dep_date) or days > 5 or days < 1:
+            if not (tour_code and tour_name and dep_date) or days < min_days or days > max_days:
                 continue
 
             adult_price = self.parse_int_safe(row.get("price") or row.get("adultPrice"))
@@ -124,6 +132,7 @@ class FourPAdapter(BaseAgencyAdapter):
             )
             results.append(
                 TourListItem(
+                    trip_id=self.trip_id,
                     agency=self.agency_name,
                     tour_code=tour_code,
                     tour_name=tour_name,
@@ -157,6 +166,8 @@ class FourPAdapter(BaseAgencyAdapter):
     def parse_dom_fallback(self, html: str) -> List[TourListItem]:
         """從世邦旅遊伺服器渲染 HTML 列表抽取行程資訊（對應 /Products/Group/Search 實測選擇器）。"""
         soup = BeautifulSoup(html, "html.parser")
+        min_days = self.get_min_days()
+        max_days = self.get_max_days()
         results: List[TourListItem] = []
 
         for card in soup.select("#search-block figure.block_style"):
@@ -183,7 +194,7 @@ class FourPAdapter(BaseAgencyAdapter):
             days_match = re.search(r"(\d+)", days_text) or re.search(r"(\d+)\s*[天日]", title)
             days = int(days_match.group(1)) if days_match else 0
 
-            if not (code and title and dep_date) or days > 5 or days < 1:
+            if not (code and title and dep_date) or days < min_days or days > max_days:
                 continue
 
             airport_el = card.select_one(".go-airport .airport")
@@ -212,6 +223,7 @@ class FourPAdapter(BaseAgencyAdapter):
             )
             results.append(
                 TourListItem(
+                    trip_id=self.trip_id,
                     agency=self.agency_name,
                     tour_code=code,
                     tour_name=title,

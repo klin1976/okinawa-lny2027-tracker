@@ -1,0 +1,58 @@
+trip_id: "okinawa_lny2027"
+trip_name: "2027 春節沖繩家族團"
+enabled: true
+
+destination:
+  country: "日本"
+  region_name: "沖繩"
+  search_keywords:
+    - "沖繩"
+    - "琉球"
+    - "OKA"
+  exclude_keywords:
+    - "郵輪"
+    - "機加酒自由行"
+  airports:
+    - "OKA"
+  shopping_stop_keywords:
+    - "光伸"
+    - "免稅店"
+    - "購物站"
+    - "藥妝免稅"
+
+schedule:
+  departure_date_start: "2027-02-01"
+  departure_date_end: "2027-02-14"
+  min_days: 4
+  max_days: 5
+  is_peak_season: true
+  peak_season_label: "2027 春節連假"
+
+flight_benchmark:
+  enabled: true
+  origins:
+    - "TPE"
+    - "KHH"
+  sample_depart_date: "2027-02-04"
+  sample_return_date: "2027-02-08"
+  max_stops: 0
+
+party:
+  family_profile_ref: "config/family_profile.yaml"
+  child_bed_age_threshold: 6
+  tip_per_day_twd: 300
+  target_total_budget_twd: 450000
+  price_drop_per_adult_twd: 1500
+  price_drop_family_total_twd: 10000
+  seat_buffer: 4
+
+scoring_rules:
+  prefer_direct_flight: 10
+  avoid_shopping_stop_bonus: 15
+  no_hotel_change_bonus: 10
+  early_out_late_back_bonus: 12
+  prefer_guaranteed_departure_bonus: 8
+  kid_friendly_attraction_bonus: 8
+  senior_restriction_penalty: -5
+  too_many_self_paid_meals_penalty: -5
+  below_budget_bonus: 10

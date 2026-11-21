@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
@@ -39,7 +40,7 @@ class FamilyBudgetResult(BaseModel):
     risk_warnings: List[str] = Field(default_factory=list, description="風險與特殊限制標籤清單")
     composite_score: float = Field(0.0, description="綜合推薦評分")
     estimated_land_cost_per_adult: Optional[int] = Field(
-        None, description="扣除直飛機票基準價後之估計每人地上成本"
+        None, description="扣除機票基準價後之估計每人地上成本"
     )
 
 
@@ -49,6 +50,8 @@ class AlertEvent(BaseModel):
         "PRICE_DROP",
         "LOW_SEATS",
         "SEAT_CRITICAL",
+        "SEATS_RELEASED",
+        "GUARANTEED_DEPARTURE",
         "NEW_HIGH_VALUE_TOUR",
         "NEW_TOUR",
         "AGENCY_CRAWL_ERROR",
@@ -61,6 +64,7 @@ class AlertEvent(BaseModel):
 
 
 class RankedTourResult(BaseModel):
+    trip_id: str = Field("default", description="所屬旅遊專案 ID")
     tour_uid: str
     agency: str
     tour_name: str
@@ -69,6 +73,10 @@ class RankedTourResult(BaseModel):
     departure_airport: str
     adult_price: Optional[int] = None
     seats_available: Optional[int] = None
+    status: str = Field("未知", description="團位狀態")
     detail_url: str
     budget: FamilyBudgetResult
     composite_score: float
+    tags: List[str] = Field(default_factory=list, description="規則標籤")
+    passed_rules: List[str] = Field(default_factory=list, description="通過規則")
+    failed_rules: List[str] = Field(default_factory=list, description="未通過規則")

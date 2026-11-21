@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import logging
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -20,13 +22,14 @@ class RichmontAdapter(BaseAgencyAdapter):
 
     SEARCH_ENDPOINT = "https://www.travel4u.com.tw/group/search/"
 
-    def _build_search_params(self, page_index: int = 1) -> Dict[str, Any]:
-        date_range = self.common_filters.get("departure_date_range", {})
+    def _build_search_params(self, keyword: str = "", page_index: int = 1) -> Dict[str, Any]:
+        start_date, end_date = self.get_default_query_date_range()
         return {
-            "keyword": "沖繩",
-            "date_start": date_range.get("start", "2027-02-01"),
-            "date_end": date_range.get("end", "2027-02-14"),
-            "length_end": self.common_filters.get("max_days", 5),
+            "keyword": keyword,
+            "date_start": start_date,
+            "date_end": end_date,
+            "length_start": self.get_min_days(),
+            "length_end": self.get_max_days(),
             "dep_location": "",
             "guarantee_depart": "False",
             "page": page_index,
@@ -42,30 +45,34 @@ class RichmontAdapter(BaseAgencyAdapter):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Referer": "https://www.travel4u.com.tw/group/",
         }
+        keywords = self.get_search_keywords() or [""]
 
         async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=True) as client:
-            for page_idx in range(1, 11):
-                resp = await client.get(
-                    search_url,
-                    params=self._build_search_params(page_idx),
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                items = self.parse_dom_fallback(resp.text)
-                if not items:
-                    break
+            for kw_idx, kw in enumerate(keywords):
+                if kw_idx > 0:
+                    await self.jitter_sleep()
+                for page_idx in range(1, 11):
+                    resp = await client.get(
+                        search_url,
+                        params=self._build_search_params(keyword=kw, page_index=page_idx),
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
+                    items = self.parse_dom_fallback(resp.text)
+                    if not items:
+                        break
 
-                new_count = 0
-                for item in items:
-                    key = (item.tour_code, item.departure_date)
-                    if key not in seen_keys:
-                        seen_keys.add(key)
-                        all_items.append(item)
-                        new_count += 1
+                    new_count = 0
+                    for item in items:
+                        key = (item.tour_code, item.departure_date)
+                        if key not in seen_keys:
+                            seen_keys.add(key)
+                            all_items.append(item)
+                            new_count += 1
 
-                if new_count == 0 or not re.search(rf"[?&]page={page_idx + 1}\b", resp.text):
-                    break
-                await self.jitter_sleep()
+                    if new_count == 0 or not re.search(rf"[?&]page={page_idx + 1}\b", resp.text):
+                        break
+                    await self.jitter_sleep()
 
         return all_items
 
@@ -83,7 +90,10 @@ class RichmontAdapter(BaseAgencyAdapter):
         if not isinstance(raw_list, list):
             return []
 
+        min_days = self.get_min_days()
+        max_days = self.get_max_days()
         results: List[TourListItem] = []
+
         for row in raw_list:
             if not isinstance(row, dict):
                 continue
@@ -96,7 +106,7 @@ class RichmontAdapter(BaseAgencyAdapter):
             dep_date = self.normalize_date(row.get("departDate") or row.get("goDate"))
             days = self.parse_int_safe(row.get("days") or row.get("tourDays")) or 0
 
-            if not (tour_code and tour_name and dep_date) or days > 5 or days < 1:
+            if not (tour_code and tour_name and dep_date) or days < min_days or days > max_days:
                 continue
 
             adult_price = self.parse_int_safe(row.get("price") or row.get("adultPrice"))
@@ -119,6 +129,7 @@ class RichmontAdapter(BaseAgencyAdapter):
             )
             results.append(
                 TourListItem(
+                    trip_id=self.trip_id,
                     agency=self.agency_name,
                     tour_code=tour_code,
                     tour_name=tour_name,
@@ -148,8 +159,11 @@ class RichmontAdapter(BaseAgencyAdapter):
         if m_yr:
             year = f"20{m_yr.group(1)}"
         else:
-            start_str = str(self.common_filters.get("departure_date_range", {}).get("start", "2027-02-01"))
-            year = start_str[:4] if len(start_str) >= 4 and start_str[:4].isdigit() else "2027"
+            start_str, _ = self.get_date_range()
+            if len(start_str) >= 4 and start_str[:4].isdigit():
+                year = start_str[:4]
+            else:
+                year = str(datetime.now().year)
         return f"{year}-{mm:02d}-{dd:02d}"
 
     @staticmethod
@@ -169,6 +183,8 @@ class RichmontAdapter(BaseAgencyAdapter):
     def parse_dom_fallback(self, html: str) -> List[TourListItem]:
         """從山富旅遊列表卡片 DOM 解析行程清單（對應 /group/search/ 實測選擇器）。"""
         soup = BeautifulSoup(html, "html.parser")
+        min_days = self.get_min_days()
+        max_days = self.get_max_days()
         results: List[TourListItem] = []
 
         for card in soup.select("div.products-grid div.product div.cardBox"):
@@ -188,7 +204,7 @@ class RichmontAdapter(BaseAgencyAdapter):
 
             days_match = re.search(r"(\d+)\s*[天日]", days_text or info_text or title)
             days = int(days_match.group(1)) if days_match else 0
-            if days > 5 or days < 1:
+            if days < min_days or days > max_days:
                 continue
 
             price_el = card.select_one("div.price-deposit-h span.price")
@@ -224,6 +240,7 @@ class RichmontAdapter(BaseAgencyAdapter):
                 )
                 results.append(
                     TourListItem(
+                        trip_id=self.trip_id,
                         agency=self.agency_name,
                         tour_code=code,
                         tour_name=title,

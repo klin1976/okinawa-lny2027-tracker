@@ -1,7 +1,9 @@
 from __future__ import annotations
+
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 import aiosqlite
 
 from src.db.database import get_db_path
@@ -22,16 +24,31 @@ class TourRepository:
     def build_tour_uid(agency: str, tour_code: str, departure_date: str) -> str:
         return f"{agency}:{tour_code}:{departure_date}"
 
-    async def upsert_tour_from_list(self, item: TourListItem, now_iso: Optional[str] = None) -> str:
+    async def upsert_tour_from_list(
+        self,
+        item: TourListItem,
+        now_iso: Optional[str] = None,
+        trip_id: Optional[str] = None,
+        destination_country: Optional[str] = None,
+        destination_airport: Optional[str] = None,
+    ) -> str:
         now = now_iso or datetime.now(timezone.utc).isoformat()
         tour_uid = self.build_tour_uid(item.agency, item.tour_code, item.departure_date)
+        effective_trip_id = trip_id or getattr(item, "trip_id", "default") or "default"
 
         query = """
         INSERT INTO tours (
-            tour_uid, agency, tour_code, tour_name, departure_date,
+            tour_uid, trip_id, destination_country, destination_airport,
+            agency, tour_code, tour_name, departure_date,
             days, departure_airport, detail_url, first_seen_at, last_seen_at, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         ON CONFLICT(tour_uid) DO UPDATE SET
+            trip_id = CASE
+                WHEN excluded.trip_id != 'default' THEN excluded.trip_id
+                ELSE tours.trip_id
+            END,
+            destination_country = COALESCE(excluded.destination_country, tours.destination_country),
+            destination_airport = COALESCE(excluded.destination_airport, tours.destination_airport),
             tour_name = excluded.tour_name,
             departure_date = excluded.departure_date,
             days = excluded.days,
@@ -45,6 +62,9 @@ class TourRepository:
                 query,
                 (
                     tour_uid,
+                    effective_trip_id,
+                    destination_country,
+                    destination_airport,
                     item.agency,
                     item.tour_code,
                     item.tour_name,
@@ -73,6 +93,20 @@ class TourRepository:
             await db.commit()
             return cursor.rowcount > 0
 
+    async def update_tour_evaluation(
+        self, tour_uid: str, score: float, tags: List[str]
+    ) -> bool:
+        tags_json = json.dumps(tags, ensure_ascii=False)
+        query = """
+        UPDATE tours
+        SET score = ?, tags_json = ?
+        WHERE tour_uid = ?
+        """
+        async with self.get_connection() as db:
+            cursor = await db.execute(query, (score, tags_json, tour_uid))
+            await db.commit()
+            return cursor.rowcount > 0
+
     async def get_tour(self, tour_uid: str) -> Optional[Dict[str, Any]]:
         query = "SELECT * FROM tours WHERE tour_uid = ?"
         async with self.get_connection() as db:
@@ -80,28 +114,48 @@ class TourRepository:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
 
-    async def get_all_active_tours(self) -> List[Dict[str, Any]]:
-        query = "SELECT * FROM tours WHERE is_active = 1 ORDER BY departure_date ASC"
+    async def get_all_active_tours(self, trip_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        if trip_id:
+            query = "SELECT * FROM tours WHERE is_active = 1 AND trip_id = ? ORDER BY departure_date ASC"
+            params: tuple[Any, ...] = (trip_id,)
+        else:
+            query = "SELECT * FROM tours WHERE is_active = 1 ORDER BY departure_date ASC"
+            params = ()
         async with self.get_connection() as db:
-            async with db.execute(query) as cursor:
+            async with db.execute(query, params) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(r) for r in rows]
 
     async def get_tours_needing_detail_parsing(
-        self, max_age_days: int = 7, limit: int = 15
+        self, max_age_days: int = 7, limit: int = 15, trip_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        query = """
-        SELECT * FROM tours
-        WHERE is_active = 1
-          AND (
-              detail_parsed_at IS NULL
-              OR julianday('now') - julianday(detail_parsed_at) > ?
-          )
-        ORDER BY departure_date ASC
-        LIMIT ?;
-        """
+        if trip_id:
+            query = """
+            SELECT * FROM tours
+            WHERE is_active = 1
+              AND trip_id = ?
+              AND (
+                  detail_parsed_at IS NULL
+                  OR julianday('now') - julianday(detail_parsed_at) > ?
+              )
+            ORDER BY departure_date ASC
+            LIMIT ?;
+            """
+            params: tuple[Any, ...] = (trip_id, max_age_days, limit)
+        else:
+            query = """
+            SELECT * FROM tours
+            WHERE is_active = 1
+              AND (
+                  detail_parsed_at IS NULL
+                  OR julianday('now') - julianday(detail_parsed_at) > ?
+              )
+            ORDER BY departure_date ASC
+            LIMIT ?;
+            """
+            params = (max_age_days, limit)
         async with self.get_connection() as db:
-            async with db.execute(query, (max_age_days, limit)) as cursor:
+            async with db.execute(query, params) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(r) for r in rows]
 
@@ -127,6 +181,36 @@ class TourRepository:
             )
             await db.commit()
             return cursor.lastrowid or 0
+
+    async def insert_price_snapshot_if_changed(
+        self,
+        tour_uid: str,
+        adult_price: Optional[int],
+        seats_available: Optional[int],
+        status: Optional[str],
+        estimated_family_total: Optional[int],
+        captured_at: Optional[str] = None,
+    ) -> Tuple[bool, int]:
+        """事件驅動快照寫入：僅在首次出現或價格、機位、狀態任一欄位變動時寫入。"""
+        latest = await self.get_latest_snapshot(tour_uid)
+        if latest is not None:
+            if (
+                latest.get("adult_price") == adult_price
+                and latest.get("seats_available") == seats_available
+                and latest.get("status") == status
+                and latest.get("estimated_family_total") == estimated_family_total
+            ):
+                return False, int(latest["id"])
+
+        row_id = await self.insert_price_snapshot(
+            tour_uid=tour_uid,
+            adult_price=adult_price,
+            seats_available=seats_available,
+            status=status,
+            estimated_family_total=estimated_family_total,
+            captured_at=captured_at,
+        )
+        return True, row_id
 
     async def get_latest_snapshot(self, tour_uid: str) -> Optional[Dict[str, Any]]:
         query = """
@@ -252,3 +336,129 @@ class TourRepository:
             async with db.execute(query, (origin, destination, depart_date)) as cursor:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
+
+    async def insert_scan_history(
+        self,
+        trip_id: str,
+        agencies_run: List[str] | str,
+        total_found: int = 0,
+        new_count: int = 0,
+        price_drop_count: int = 0,
+        seats_released_count: int = 0,
+        status_change_count: int = 0,
+        error_summary: Optional[str] = None,
+        cli_args: Optional[Dict[str, Any]] = None,
+        scanned_at: Optional[str] = None,
+    ) -> int:
+        now = scanned_at or datetime.now(timezone.utc).isoformat()
+        agencies_str = (
+            json.dumps(agencies_run, ensure_ascii=False)
+            if isinstance(agencies_run, list)
+            else str(agencies_run)
+        )
+        args_json = json.dumps(cli_args or {}, ensure_ascii=False)
+        query = """
+        INSERT INTO scan_history (
+            trip_id, scanned_at, agencies_run, total_found,
+            new_count, price_drop_count, seats_released_count,
+            status_change_count, error_summary, cli_args_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                query,
+                (
+                    trip_id,
+                    now,
+                    agencies_str,
+                    total_found,
+                    new_count,
+                    price_drop_count,
+                    seats_released_count,
+                    status_change_count,
+                    error_summary,
+                    args_json,
+                ),
+            )
+            await db.commit()
+            return cursor.lastrowid or 0
+
+    async def get_recent_scan_history(
+        self, trip_id: Optional[str] = None, limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        if trip_id:
+            query = """
+            SELECT * FROM scan_history
+            WHERE trip_id = ?
+            ORDER BY scanned_at DESC, id DESC
+            LIMIT ?;
+            """
+            params: tuple[Any, ...] = (trip_id, limit)
+        else:
+            query = """
+            SELECT * FROM scan_history
+            ORDER BY scanned_at DESC, id DESC
+            LIMIT ?;
+            """
+            params = (limit,)
+        async with self.get_connection() as db:
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+
+    async def get_recent_snapshot_diffs(
+        self, hours: int = 24, trip_id: Optional[str] = None, limit: int = 30
+    ) -> List[Dict[str, Any]]:
+        """利用視窗函式查詢指定小時內的新團上架、價格與機位狀態異動紀錄。"""
+        offset = f"-{abs(int(hours))} hours"
+        trip_filter = "AND trip_id = ?" if trip_id else ""
+        query = f"""
+        WITH ordered AS (
+            SELECT
+                ps.id,
+                ps.tour_uid,
+                ps.captured_at,
+                ps.adult_price AS new_price,
+                LAG(ps.adult_price) OVER (
+                    PARTITION BY ps.tour_uid ORDER BY ps.captured_at ASC, ps.id ASC
+                ) AS old_price,
+                ps.seats_available AS new_seats,
+                LAG(ps.seats_available) OVER (
+                    PARTITION BY ps.tour_uid ORDER BY ps.captured_at ASC, ps.id ASC
+                ) AS old_seats,
+                ps.status AS new_status,
+                LAG(ps.status) OVER (
+                    PARTITION BY ps.tour_uid ORDER BY ps.captured_at ASC, ps.id ASC
+                ) AS old_status,
+                ps.estimated_family_total AS new_family_total,
+                LAG(ps.estimated_family_total) OVER (
+                    PARTITION BY ps.tour_uid ORDER BY ps.captured_at ASC, ps.id ASC
+                ) AS old_family_total,
+                t.trip_id,
+                t.agency,
+                t.tour_name,
+                t.departure_date
+            FROM price_snapshots ps
+            JOIN tours t ON ps.tour_uid = t.tour_uid
+        )
+        SELECT * FROM ordered
+        WHERE julianday(captured_at) >= julianday('now', ?)
+          {trip_filter}
+          AND (
+            old_status IS NULL
+            OR old_price IS NOT new_price
+            OR old_seats IS NOT new_seats
+            OR old_status IS NOT new_status
+            OR old_family_total IS NOT new_family_total
+          )
+        ORDER BY captured_at DESC, id DESC
+        LIMIT ?;
+        """
+        params: List[Any] = [offset]
+        if trip_id:
+            params.append(trip_id)
+        params.append(limit)
+        async with self.get_connection() as db:
+            async with db.execute(query, tuple(params)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]

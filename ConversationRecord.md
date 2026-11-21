@@ -122,3 +122,28 @@ created: 2026-11-19
   - 呼叫 `sync_obsidian.ps1` 進行雙向同步與 GitHub 推送。
   - 自動提交專案最新紀錄並推送至 GitHub 遠端儲存庫。
 
+
+---
+### [2026-11-21 23:38:00] 用戶提問 / AI 回應
+
+**用戶提問：**
+1. 開工
+2. /swarm 可以將目前專案調整參考 	ech-training-radar 的作法嗎？不要限定旅遊國家地點，先給計畫書不要改程式。
+3. 確認 4 大核心架構決策：
+   - 採 GitHub Actions Cron + SQLite Commit 回 Repo。
+   - 爬蟲採「httpx XHR 直連優先，遇 WAF/SSR 必要時才啟用 Playwright」混合模式。
+   - 內建 
+otifier/ 支援 Discord、Telegram 雙管道自動切換。
+   - 建立沖繩、北海道、韓國、歐洲長程轉機等多國範例。
+4. 跑一次實機測試。
+5. 將這版重構程式碼與初始 data/radar.db 一起 Commit 並推送至 GitHub。
+
+**AI 回應：**
+完成通用多目的地旅遊跨社比價雷達（	ravel-radar）架構重構與實機驗證：
+- **動態配置**：建立 config/trips/*.yaml，解除特定地區硬編碼。
+- **資料模型解耦**：泛化 TripConfig、TourListItem、TourPackage，支援 1~30 天天數與動態佔床年齡。
+- **爬蟲升級**：五大旅行社 Adapter 支援動態查詢注入與 --no-playwright 降級。
+- **評估與通知**：實作 RuleEvaluator、DiffEngine、Rich 終端輸出、Discord 與 Telegram 推播。
+- **CLI & CI/CD**：實作 src/cli.py 與 .github/workflows/monitor.yml 自動排程。
+- **實機驗證**：北海道（812 筆）、歐洲奧捷（115 筆）、沖繩（226 筆）實機抓取寫入 data/radar.db。
+- **品質門禁**：45 項單元與整合測試全數 PASS。

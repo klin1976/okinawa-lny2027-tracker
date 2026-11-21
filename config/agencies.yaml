@@ -1,17 +1,4 @@
-common_filters:
-  destination_keywords:
-    - "沖繩"
-    - "琉球"
-    - "OKA"
-  departure_date_range:
-    start: "2027-02-01"
-    end: "2027-02-14"
-  max_days: 5
-  departure_airports:
-    - "TPE"
-    - "KHH"
-    - "ALL"
-
+# 旅行社爬蟲端點與全域併發控制（目的地與日期篩選已抽離至 config/trips/*.yaml）
 concurrency:
   max_concurrent_agencies: 1
   jitter_min_seconds: 2.0

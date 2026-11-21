@@ -1,26 +1,41 @@
 from __future__ import annotations
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 import yaml
 
 from src.schemas.budget_schema import AlertEvent, FamilyBudgetResult
-from src.schemas.tour_schema import OkinawaTourPackage
+from src.schemas.tour_schema import TourPackage
+from src.schemas.trip_schema import TripConfig
 
 DEFAULT_PROFILE_PATH = Path("config/family_profile.yaml")
 
 
 class AlertDetector:
-    def __init__(self, profile_data_or_path: Optional[Union[str, Path, Dict[str, Any]]] = None):
-        if isinstance(profile_data_or_path, dict):
+    def __init__(
+        self,
+        profile_data_or_path: Optional[Union[str, Path, Dict[str, Any], TripConfig]] = None,
+    ):
+        if isinstance(profile_data_or_path, TripConfig):
+            base_profile: Dict[str, Any] = {}
+            ref = profile_data_or_path.party.family_profile_ref
+            if ref and Path(ref).exists():
+                with open(ref, "r", encoding="utf-8") as f:
+                    base_profile = yaml.safe_load(f) or {}
+            elif DEFAULT_PROFILE_PATH.exists():
+                with open(DEFAULT_PROFILE_PATH, "r", encoding="utf-8") as f:
+                    base_profile = yaml.safe_load(f) or {}
+            self.profile = profile_data_or_path.build_effective_profile(base_profile)
+        elif isinstance(profile_data_or_path, dict):
             self.profile = profile_data_or_path
         elif profile_data_or_path is not None:
             with open(profile_data_or_path, "r", encoding="utf-8") as f:
-                self.profile = yaml.safe_load(f)
+                self.profile = yaml.safe_load(f) or {}
         else:
             if DEFAULT_PROFILE_PATH.exists():
                 with open(DEFAULT_PROFILE_PATH, "r", encoding="utf-8") as f:
-                    self.profile = yaml.safe_load(f)
+                    self.profile = yaml.safe_load(f) or {}
             else:
                 self.profile = {}
 
@@ -35,7 +50,7 @@ class AlertDetector:
         current_snapshot: Dict[str, Any],
         prev_snapshot: Optional[Dict[str, Any]],
         budget_result: FamilyBudgetResult,
-        tour_package: Optional[OkinawaTourPackage] = None,
+        tour_package: Optional[TourPackage] = None,
         is_top_ranked: bool = False,
         existing_alert_keys: Optional[Set[str]] = None,
     ) -> List[AlertEvent]:
@@ -45,6 +60,7 @@ class AlertDetector:
 
         curr_adult_price = current_snapshot.get("adult_price")
         curr_seats = current_snapshot.get("seats_available")
+        curr_status = str(current_snapshot.get("status") or "")
         curr_family_total = budget_result.grand_total_twd
         total_seats_needed = budget_result.total_flight_seats_needed
 
@@ -134,12 +150,59 @@ class AlertDetector:
                     )
                 )
 
-        # 3. 機位告警 (LOW_SEATS 與 SEAT_CRITICAL)
+        # 3. 滿團／候補釋出名額偵測 (SEATS_RELEASED) 與保證出團轉態偵測 (GUARANTEED_DEPARTURE)
         prev_seats = prev_snapshot.get("seats_available")
+        prev_status = str(prev_snapshot.get("status") or "")
+
+        was_closed = prev_status in {"滿團", "候補"} or (prev_seats is not None and prev_seats == 0)
+        now_open = curr_status in {"可報名", "保證出團"} and (curr_seats is None or curr_seats > 0)
+        if was_closed and now_open:
+            alert_key = f"SEATS_RELEASED:{tour_uid}:{curr_status}_{curr_seats}"
+            if alert_key not in existing_keys:
+                seats_desc = f"現餘 {curr_seats} 席" if curr_seats is not None else "狀態已開放"
+                alerts.append(
+                    AlertEvent(
+                        alert_key=alert_key,
+                        alert_type="SEATS_RELEASED",
+                        tour_uid=tour_uid,
+                        priority="高",
+                        message=(
+                            f"【名額釋出】原狀態「{prev_status or '滿團'}」已轉為「{curr_status}」"
+                            f"（{seats_desc}），請把握報名時機！"
+                        ),
+                        details={
+                            "prev_status": prev_status,
+                            "curr_status": curr_status,
+                            "prev_seats": prev_seats,
+                            "curr_seats": curr_seats,
+                        },
+                        created_at=now_iso,
+                    )
+                )
+
+        if prev_status and prev_status != "保證出團" and curr_status == "保證出團":
+            alert_key = f"GUARANTEED_DEPARTURE:{tour_uid}"
+            if alert_key not in existing_keys:
+                alerts.append(
+                    AlertEvent(
+                        alert_key=alert_key,
+                        alert_type="GUARANTEED_DEPARTURE",
+                        tour_uid=tour_uid,
+                        priority="中高",
+                        message=f"【成團通知】團次狀態由「{prev_status}」升級為「保證出團」！",
+                        details={
+                            "prev_status": prev_status,
+                            "curr_status": curr_status,
+                            "seats_available": curr_seats,
+                        },
+                        created_at=now_iso,
+                    )
+                )
+
+        # 4. 機位告警 (LOW_SEATS 與 SEAT_CRITICAL)
         low_seat_threshold = total_seats_needed + self.seat_buffer
 
         if curr_seats is not None and prev_seats is not None:
-            # 機位跌破家族所需（已不足）
             if prev_seats >= total_seats_needed and curr_seats < total_seats_needed:
                 alert_key = f"SEAT_CRITICAL:{tour_uid}:{curr_seats}"
                 if alert_key not in existing_keys:
@@ -162,7 +225,6 @@ class AlertDetector:
                         )
                     )
 
-            # 跌破低機位安全緩衝水位（但仍足夠）
             elif (
                 prev_seats > low_seat_threshold
                 and curr_seats <= low_seat_threshold

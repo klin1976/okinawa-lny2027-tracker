@@ -188,3 +188,27 @@
 3. 執行 sync_obsidian.ps1 同步至雲端硬碟 secondbrain 與 obsidian-vault GitHub。
 4. 自動提交並推送本專案最新 Commit 至 GitHub 遠端儲存庫。
 
+
+--------------------------------------------------------------------------------
+[2026-11-21 23:38:00] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+用戶提問：
+1. 開工
+2. /swarm 可以將目前專案調整參考 https://github.com/klin1976/tech-training-radar 的作法嗎???不要限定旅遊國家地點，請先給我計畫書，先不要改程式
+3. 確認 4 大核心架構決策：
+   - 採 tech-training-radar 的 GitHub Actions Cron + SQLite Commit 回 Repo。
+   - 爬蟲策略採「httpx XHR 直連優先，遇 WAF/SSR 必要時才啟用 Playwright」混合模式。
+   - 推播通知管道：內建 notifier/ 模組優先支援 Discord、Telegram 雙管道（依環境變數自動切換）。
+   - 多目的地驗證範例：除現有沖繩遷移至 config/trips/okinawa_lny2027.yaml 外，一併建立北海道、韓國與歐洲長程轉機線範例。
+4. 跑一次實機測試
+5. 順便將這版重構程式碼與初始 data/radar.db 一起 Commit 並推送至 GitHub
+
+AI 回應：
+完成通用多目的地旅遊跨社比價雷達（travel-radar）架構重構與實機驗證：
+1. 依據 tech-training-radar 典範，解除硬編碼沖繩限制，建立 config/trips/*.yaml 多目的地動態配置體系（沖繩、北海道、韓國、歐洲奧捷）。
+2. 解耦 Pydantic Schema，泛化 TripConfig、TourListItem 與 TourPackage（向後相容別名 OkinawaTourPackage），支援 1~30 天行程與動態佔床年齡。
+3. 升級五大旅行社 Adapter（Lion, Cola, Settour, Richmont, Fourp），實作動態查詢參數注入與 --no-playwright 混合備援降級。
+4. 建立 src/evaluator/（評分標籤與 Diff 異動引擎）與 src/notifier/（Rich 終端表格、Discord Rich Embed 與 Telegram 雙推播支援）。
+5. 實作 CLI 命令列工具 src/cli.py（init-db, list-trips, scan, diff, test-scrape）與 GitHub Actions 每日排程工作流 .github/workflows/monitor.yml。
+6. 實機測試多國抓取（北海道 812 筆、歐洲奧捷 115 筆、沖繩過濾 226 筆），初始 data/radar.db 資料庫建立並完成 WAL Checkpoint 合併。
+7. 單元與整合測試全數通過（45 passed），完成 Git 提交並推送到遠端儲存庫。

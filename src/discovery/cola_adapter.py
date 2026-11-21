@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -61,36 +62,45 @@ class ColaAdapter(BaseAgencyAdapter):
                 await browser.close()
         return await super().fetch_mode_b_playwright()
 
-    def _build_payload(self, page_index: int = 1) -> Dict[str, Any]:
-        date_range = self.common_filters.get("departure_date_range", {})
+    def _build_payload(self, keyword: str = "", page_index: int = 1) -> Dict[str, Any]:
+        start_date, end_date = self.get_default_query_date_range()
         return {
-            "Keyword": "沖繩",
-            "BeginDate": date_range.get("start", "2027-02-01"),
-            "EndDate": date_range.get("end", "2027-02-14"),
-            "MaxDays": self.common_filters.get("max_days", 5),
+            "Keyword": keyword,
+            "BeginDate": start_date,
+            "EndDate": end_date,
+            "MaxDays": self.get_max_days(),
             "PageIndex": page_index,
             "PageSize": 20,
         }
 
     async def fetch_mode_a_xhr(self) -> List[TourListItem]:
         all_items: List[TourListItem] = []
+        seen_keys: set[tuple[str, str]] = set()
         headers = {
             "Origin": "https://www.colatour.com.tw",
             "Referer": "https://www.colatour.com.tw/C10A_TourList/C10A01_Search.aspx",
         }
-        for page_idx in range(1, 6):
-            payload = await self._post_json(
-                self.XHR_ENDPOINT,
-                json_body=self._build_payload(page_idx),
-                headers=headers,
-            )
-            items = self.parse_xhr_payload(payload)
-            if not items:
-                break
-            all_items.extend(items)
-            if len(items) < 20:
-                break
-            await self.jitter_sleep()
+        keywords = self.get_search_keywords() or [""]
+        for kw_idx, kw in enumerate(keywords):
+            if kw_idx > 0:
+                await self.jitter_sleep()
+            for page_idx in range(1, 6):
+                payload = await self._post_json(
+                    self.XHR_ENDPOINT,
+                    json_body=self._build_payload(keyword=kw, page_index=page_idx),
+                    headers=headers,
+                )
+                items = self.parse_xhr_payload(payload)
+                if not items:
+                    break
+                for item in items:
+                    key = (item.tour_code, item.departure_date)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        all_items.append(item)
+                if len(items) < 20:
+                    break
+                await self.jitter_sleep()
         return all_items
 
     def parse_xhr_payload(self, payload: Any) -> List[TourListItem]:
@@ -107,7 +117,10 @@ class ColaAdapter(BaseAgencyAdapter):
         if not isinstance(raw_list, list):
             return []
 
+        min_days = self.get_min_days()
+        max_days = self.get_max_days()
         results: List[TourListItem] = []
+
         for row in raw_list:
             if not isinstance(row, dict):
                 continue
@@ -120,7 +133,7 @@ class ColaAdapter(BaseAgencyAdapter):
             dep_date = self.normalize_date(row.get("TourDate") or row.get("BeginDate"))
             days = self.parse_int_safe(row.get("TourDays") or row.get("Days")) or 0
 
-            if not (tour_code and tour_name and dep_date) or days > 5 or days < 1:
+            if not (tour_code and tour_name and dep_date) or days < min_days or days > max_days:
                 continue
 
             adult_price = self.parse_int_safe(
@@ -151,6 +164,7 @@ class ColaAdapter(BaseAgencyAdapter):
             )
             results.append(
                 TourListItem(
+                    trip_id=self.trip_id,
                     agency=self.agency_name,
                     tour_code=tour_code,
                     tour_name=tour_name,

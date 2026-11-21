@@ -1,5 +1,5 @@
 ---
-title: "AGENTS.md — 2027 春節沖繩旅遊跨社比價與監控系統 AI 多代理協作架構"
+title: "AGENTS.md — 通用多目的地旅遊跨社比價與異動監控雷達 AI 多代理協作架構"
 aliases:
   - AGENTS
   - Agent Registry
@@ -9,12 +9,13 @@ tags:
   - multi-agent
   - routing
   - architecture
-  - okinawa-2027
+  - travel-radar
 type: agent-manifest
 created: 2026-11-19
+updated: 2026-11-21
 ---
 
-# AGENTS.md — 2027 春節沖繩旅遊跨社比價與監控系統 (`okinawa-lny2027-tracker`)
+# AGENTS.md — 通用多目的地旅遊跨社比價與異動監控雷達 (`travel-radar`)
 
 > **知識導航**：[[00_Index|🗺️ 00_Index (MOC 總索引)]] ｜ [[README|📘 README (專案導覽)]] ｜ [[2027_TravelLtinerary|📋 系統計畫規格書]] ｜ [[docs/api_spec|🔌 docs/api_spec]] ｜ [[ConversationRecord|📝 對話紀錄]] ｜ [[REMINDER|⚠️ 提醒事項]]  
 > **強制規範**：所有 Agent 在開始任何任務前，必須先閱讀本文件與對應的專案 [[skills/okinawa-discovery/SKILL|skills/okinawa-discovery]]、[[skills/okinawa-extractor/SKILL|skills/okinawa-extractor]]、[[skills/okinawa-calculator/SKILL|skills/okinawa-calculator]] 及 [[2027_TravelLtinerary]]。
@@ -23,11 +24,12 @@ created: 2026-11-19
 
 | 層級 | 技術棧 |
 |------|--------|
-| API / Service | Python 3.11+、FastAPI + Uvicorn、`httpx`、Pydantic v2、PyYAML |
-| 爬蟲與解析 | `crawl4ai>=0.9.0`、Playwright (Chromium)、`fast-flights>=3.1.0` |
-| LLM 供應商 | Gemini API (`gemini/gemini-2.5-flash`) 或 Ollama (`ollama/qwen2.5:14b`) |
-| 資料庫 | SQLite 3 (`aiosqlite` / `sqlite3`) |
-| 容器與排程 | Docker、Docker Compose、n8n (HTTP Request 觸發) |
+| CLI / 排程 | `src/cli.py` (CLI-First)、GitHub Actions Cron + `data/radar.db` Commit 回 Repo |
+| API / Service | Python 3.11+、FastAPI + Uvicorn（選配）、`httpx`、Pydantic v2、PyYAML (`config/trips/*.yaml`) |
+| 爬蟲與解析 | `crawl4ai>=0.9.0`、Playwright (Chromium 混合備援)、`fast-flights>=3.1.0` |
+| LLM 供應商 | Gemini API (`gemini/gemini-3.8-flash`) 或 Ollama (`ollama/qwen2.5:14b`) |
+| 評估與推播 | `src/evaluator/` (`RuleEvaluator`, `DiffEngine`)、`src/notifier/` (`Rich`, Discord, Telegram) |
+| 資料庫 | SQLite 3 (`aiosqlite` / `sqlite3` WAL + 事件驅動快照 + `scan_history`) |
 
 ---
 
@@ -184,9 +186,9 @@ agent_schema:
     - return_schema
 
   triggers:
-    - keywords: ["FastAPI", "Playwright", "Crawl4AI", "fast-flights", "httpx", "Adapter", "XHR"]
-    - keywords: ["daily-run", "TourListItem", "OkinawaTourPackage", "budget_engine", "alert_detector"]
-    - pattern: "任務涉及 API 端點、爬蟲擷取、LLM 解析或預算/告警商業邏輯"
+    - keywords: ["FastAPI", "CLI", "Playwright", "Crawl4AI", "fast-flights", "httpx", "Adapter", "XHR", "Notifier"]
+    - keywords: ["daily-run", "TourListItem", "TourPackage", "TripConfig", "budget_engine", "RuleEvaluator", "DiffEngine"]
+    - pattern: "任務涉及 CLI、API 端點、爬蟲擷取、LLM 解析、規則評分、推播或預算/告警商業邏輯"
 
   excludes:
     - "直接撰寫或修改 SQLite DDL 結構"
@@ -222,8 +224,8 @@ agent_schema:
 ```
 
 ### 職責與規範
-- 實作 `src/discovery/`、`src/extractor/`、`src/calculator/`、`src/services/` 與 `src/main.py`。
-- 確保 `TourListItem` 與 `OkinawaTourPackage` 嚴格使用 Pydantic v2 驗證。
+- 實作 `src/cli.py`、`src/discovery/`、`src/extractor/`、`src/calculator/`、`src/evaluator/`、`src/notifier/`、`src/services/` 與 `src/main.py`。
+- 確保 `TripConfig`、`TourListItem` 與 `TourPackage`（含向後相容別名 `OkinawaTourPackage`）嚴格使用 Pydantic v2 驗證。
 
 **Input Format**：`{ "task": "...", "target_files": [...], "constraints": [...] }`  
 **Output Format**：`{ "modified_files": [...], "summary": "...", "status": "DONE|BLOCKED" }`
@@ -264,7 +266,7 @@ agent_schema:
   confidence_threshold: 0.75
 
   known_tables:
-    active: ["tours", "price_snapshots", "flight_benchmarks"]
+    active: ["tours", "price_snapshots", "flight_benchmarks", "alert_logs", "scan_history"]
     planned: []
     deprecated: []
 ```
@@ -392,3 +394,4 @@ STEP 4  單一高分匹配 → 直接分派；跨層任務 → 依 pipeline_temp
 | 版本 | 日期 | 異動摘要 |
 |------|------|---------|
 | v1.0 | 2026-11-19 | 依據 `2027_TravelLtinerary.md` 完成專案初始化，建立 5 個 Agent 定義與 3 個專案 Skills |
+| v1.1 | 2026-11-21 | 參考 `tech-training-radar` 全面升級為不限國家地點之通用 `travel-radar` 架構（`config/trips/*.yaml`、`src/cli.py`、`src/evaluator/`、`src/notifier/`、`scan_history` 與 GitHub Actions Cron） |

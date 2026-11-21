@@ -1,25 +1,40 @@
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import yaml
 
 from src.schemas.budget_schema import CostBreakdown, FamilyBudgetResult, MemberCostItem
-from src.schemas.tour_schema import OkinawaTourPackage
+from src.schemas.tour_schema import TourPackage
+from src.schemas.trip_schema import TripConfig
 
 DEFAULT_PROFILE_PATH = Path("config/family_profile.yaml")
 
 
 class BudgetEngine:
-    def __init__(self, profile_data_or_path: Optional[Union[str, Path, Dict[str, Any]]] = None):
-        if isinstance(profile_data_or_path, dict):
+    def __init__(
+        self,
+        profile_data_or_path: Optional[Union[str, Path, Dict[str, Any], TripConfig]] = None,
+    ):
+        if isinstance(profile_data_or_path, TripConfig):
+            base_profile: Dict[str, Any] = {}
+            ref = profile_data_or_path.party.family_profile_ref
+            if ref and Path(ref).exists():
+                with open(ref, "r", encoding="utf-8") as f:
+                    base_profile = yaml.safe_load(f) or {}
+            elif DEFAULT_PROFILE_PATH.exists():
+                with open(DEFAULT_PROFILE_PATH, "r", encoding="utf-8") as f:
+                    base_profile = yaml.safe_load(f) or {}
+            self.profile = profile_data_or_path.build_effective_profile(base_profile)
+        elif isinstance(profile_data_or_path, dict):
             self.profile = profile_data_or_path
         elif profile_data_or_path is not None:
             with open(profile_data_or_path, "r", encoding="utf-8") as f:
-                self.profile = yaml.safe_load(f)
+                self.profile = yaml.safe_load(f) or {}
         else:
             if DEFAULT_PROFILE_PATH.exists():
                 with open(DEFAULT_PROFILE_PATH, "r", encoding="utf-8") as f:
-                    self.profile = yaml.safe_load(f)
+                    self.profile = yaml.safe_load(f) or {}
             else:
                 self.profile = {}
 
@@ -27,6 +42,12 @@ class BudgetEngine:
         self.defaults = self.profile.get("defaults", {})
         self.rooming = self.profile.get("rooming", {})
         self.scoring_weights = self.profile.get("scoring_weights", {})
+        self.child_bed_age_threshold = int(
+            self.profile.get(
+                "child_bed_age_threshold",
+                self.defaults.get("child_bed_age_threshold", 6),
+            )
+        )
 
     def calculate_demands(self) -> Dict[str, int]:
         total_seats = 0
@@ -43,8 +64,8 @@ class BudgetEngine:
             if require_flight_seat:
                 total_seats += count
 
-            # 日本規定滿 6 歲強制佔床
-            if require_bed or (age is not None and age >= 6):
+            # 依旅遊專案國別／飯店規定之強制佔床年齡門檻判斷（日本多為 6 歲，歐美可設 12 歲）
+            if require_bed or (age is not None and age >= self.child_bed_age_threshold):
                 total_beds += count
 
         return {
@@ -55,7 +76,7 @@ class BudgetEngine:
 
     def calculate(
         self,
-        tour: OkinawaTourPackage,
+        tour: TourPackage,
         benchmark_flight_min_price: Optional[int] = None,
     ) -> FamilyBudgetResult:
         demands = self.calculate_demands()
@@ -105,8 +126,10 @@ class BudgetEngine:
             age = member.get("age")
             declared_require_bed = member.get("require_bed", True)
 
-            # 強制滿 6 歲佔床防護
-            actual_require_bed = declared_require_bed or (age is not None and age >= 6)
+            # 依專案強制佔床年齡門檻進行防護
+            actual_require_bed = declared_require_bed or (
+                age is not None and age >= self.child_bed_age_threshold
+            )
 
             if role == "adult":
                 unit_price = adult_twin_price
@@ -151,7 +174,6 @@ class BudgetEngine:
 
             elif role == "child":
                 if actual_require_bed:
-                    # 佔床兒童（含滿 6 歲強制佔床）
                     estimated_item = False
                     if child_pricing.child_with_bed_price is not None:
                         unit_price = child_pricing.child_with_bed_price
@@ -179,7 +201,6 @@ class BudgetEngine:
                         )
                     )
                 else:
-                    # 不佔床兒童（未滿 6 歲）
                     estimated_item = False
                     if child_pricing.child_no_bed_price is not None:
                         unit_price = child_pricing.child_no_bed_price
@@ -258,7 +279,7 @@ class BudgetEngine:
         )
         if pricing.tip_per_day_twd is None:
             is_estimated = True
-            assumptions.append(f"行程未載明每日小費，採日本線慣例每日 {tip_per_day} 元估算")
+            assumptions.append(f"行程未載明每日小費，採專案預設每日 {tip_per_day} 元估算")
 
         # 4. 單人房差檢核
         single_supplement_total = 0
@@ -267,7 +288,6 @@ class BudgetEngine:
         actual_supplement = pricing.single_room_supplement or fallback_single_supplement
 
         if total_beds_needed % 2 == 1:
-            # 奇數佔床
             triple_policy = (pricing.triple_room_policy or "").lower()
             no_triple_keywords = ["無法加床", "無三人房", "不提供三人房", "不可加床", "無法提供加床"]
             cannot_triple = any(k in triple_policy for k in no_triple_keywords)
@@ -308,16 +328,17 @@ class BudgetEngine:
         if benchmark_flight_min_price is not None:
             land_cost = adult_twin_price - benchmark_flight_min_price
 
-        # 7. 風險標籤
+        # 7. 風險標籤（去地域化）
         flags = tour.comparison_flags
         if flags.has_shopping_station:
-            risk_warnings.append("全行程包含免稅購物站（如光伸免稅店）")
+            risk_warnings.append("全行程包含免稅／購物站行程")
         if flags.total_self_paid_meals >= 4:
             risk_warnings.append(f"自理餐偏多（總計 {flags.total_self_paid_meals} 餐須自理）")
         if tour.flights.outbound and tour.flights.outbound.is_charter_flight:
-            risk_warnings.append("去程為春節包機/包銷機位，開票後不可退改")
-        if pricing.lny_surcharge_note:
-            risk_warnings.append(pricing.lny_surcharge_note)
+            risk_warnings.append("去程為包機/包銷機位，開票後不可退改")
+        surcharge_note = pricing.peak_season_surcharge_note or pricing.lny_surcharge_note
+        if surcharge_note:
+            risk_warnings.append(surcharge_note)
 
         # 8. 綜合性價比評分
         score = 80.0

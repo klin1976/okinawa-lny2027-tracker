@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.schemas.trip_schema import TripConfig
 
 
 class Settings(BaseSettings):
@@ -20,7 +23,13 @@ class Settings(BaseSettings):
     host: str = Field("0.0.0.0", alias="HOST")
     port: int = Field(8000, alias="PORT")
     api_key: str = Field("changeme", alias="API_KEY")
-    database_path: str = Field("data/tracker.db", alias="DATABASE_PATH")
+    database_path: str = Field("data/radar.db", alias="DATABASE_PATH")
+    trips_dir: str = Field("config/trips", alias="TRIPS_DIR")
+
+    # 推播通知 Webhook (Discord / Telegram)
+    discord_webhook_url: Optional[str] = Field(None, alias="DISCORD_WEBHOOK_URL")
+    telegram_bot_token: Optional[str] = Field(None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: Optional[str] = Field(None, alias="TELEGRAM_CHAT_ID")
 
     # LLM 供應商設定 (gemini 或 ollama)
     llm_provider: str = Field("gemini", alias="LLM_PROVIDER")
@@ -81,3 +90,43 @@ def load_family_profile(path: str | Path = "config/family_profile.yaml") -> Dict
 
 def load_agencies_config(path: str | Path = "config/agencies.yaml") -> Dict[str, Any]:
     return load_yaml_config(path)
+
+
+def list_trip_configs(
+    trips_dir: str | Path = "config/trips",
+    enabled_only: bool = False,
+) -> List[TripConfig]:
+    """掃描並載入目錄下的所有旅遊專案 YAML 設定。"""
+    base = Path(trips_dir)
+    if not base.exists():
+        return []
+    configs: List[TripConfig] = []
+    for file_path in sorted(base.glob("*.yaml")) + sorted(base.glob("*.yml")):
+        data = load_yaml_config(file_path)
+        cfg = TripConfig.model_validate(data)
+        if enabled_only and not cfg.enabled:
+            continue
+        configs.append(cfg)
+    return configs
+
+
+def load_trip_config(
+    trip_id_or_path: str | Path,
+    trips_dir: str | Path = "config/trips",
+) -> TripConfig:
+    """依 trip_id 或 YAML 路徑載入單一旅遊專案設定。"""
+    candidate = Path(trip_id_or_path)
+    if candidate.exists() and candidate.is_file():
+        return TripConfig.model_validate(load_yaml_config(candidate))
+
+    base = Path(trips_dir)
+    for ext in (".yaml", ".yml"):
+        direct = base / f"{trip_id_or_path}{ext}"
+        if direct.exists() and direct.is_file():
+            return TripConfig.model_validate(load_yaml_config(direct))
+
+    for cfg in list_trip_configs(trips_dir=base, enabled_only=False):
+        if cfg.trip_id == str(trip_id_or_path):
+            return cfg
+
+    raise FileNotFoundError(f"找不到旅遊專案設定：{trip_id_or_path} (目錄: {base})")

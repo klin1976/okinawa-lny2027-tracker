@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import re
 import statistics
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 from fast_flights import FlightQuery, Passengers, create_query, get_flights
 
@@ -52,17 +53,17 @@ def parse_price_twd(price_val: Any) -> Optional[int]:
 
 
 class FlightBenchmarkClient:
-    """封裝 fast-flights 3.x 查詢台灣主要機場（TPE / KHH）往返沖繩（OKA）直飛機票基準價。"""
+    """封裝 fast-flights 3.x 查詢多國航線往返機票基準價（支援直飛與轉機）。"""
 
     def __init__(self, repository: Optional[TourRepository] = None):
         self.repository = repository
 
     def query_sync(
         self,
-        origin: Literal["TPE", "KHH", "RMQ", "TSA"],
-        destination: str = "OKA",
-        depart_date: str = "2027-02-04",
-        return_date: str = "2027-02-08",
+        origin: str,
+        destination: str,
+        depart_date: str,
+        return_date: str,
         adults: int = 1,
         max_stops: int = 0,
         currency: str = "TWD",
@@ -160,10 +161,10 @@ class FlightBenchmarkClient:
 
     async def fetch_and_save(
         self,
-        origin: Literal["TPE", "KHH", "RMQ", "TSA"],
-        destination: str = "OKA",
-        depart_date: str = "2027-02-04",
-        return_date: str = "2027-02-08",
+        origin: str,
+        destination: str,
+        depart_date: str,
+        return_date: str,
         adults: int = 1,
         max_stops: int = 0,
     ) -> FlightBenchmarkResult:
@@ -189,20 +190,57 @@ class FlightBenchmarkClient:
             )
         return result
 
+    async def fetch_route_benchmarks(
+        self,
+        origins: List[str],
+        destinations: List[str],
+        depart_date: str,
+        return_date: str,
+        max_stops: int = 0,
+    ) -> Dict[str, FlightBenchmarkResult]:
+        """批次查詢多個出發機場往返多個目的地機場的機票基準價（支援轉機）。"""
+        results: Dict[str, FlightBenchmarkResult] = {}
+        for org in origins:
+            for dest in destinations:
+                route_key = f"{org}-{dest}"
+                results[route_key] = await self.fetch_and_save(
+                    origin=org,
+                    destination=dest,
+                    depart_date=depart_date,
+                    return_date=return_date,
+                    max_stops=max_stops,
+                )
+        return results
+
+    @staticmethod
+    def summarize_min_by_origin(results: Dict[str, FlightBenchmarkResult]) -> Dict[str, int]:
+        """從多航線查詢結果中萃取出每個出發機場對應的最低基準機票價。"""
+        min_by_origin: Dict[str, int] = {}
+        for bm in results.values():
+            if bm.min_price_twd is None:
+                continue
+            prev = min_by_origin.get(bm.origin)
+            if prev is None or bm.min_price_twd < prev:
+                min_by_origin[bm.origin] = bm.min_price_twd
+        return min_by_origin
+
     async def fetch_all_taiwan_oka_benchmarks(
         self,
         depart_date: str = "2027-02-04",
         return_date: str = "2027-02-08",
-        origins: Optional[List[Literal["TPE", "KHH"]]] = None,
+        origins: Optional[List[str]] = None,
     ) -> Dict[str, FlightBenchmarkResult]:
-        """同時查詢 TPE -> OKA 與 KHH -> OKA 基準價。"""
-        target_origins: List[Literal["TPE", "KHH"]] = origins or ["TPE", "KHH"]
-        results: Dict[str, FlightBenchmarkResult] = {}
-        for org in target_origins:
-            results[org] = await self.fetch_and_save(
-                origin=org,
-                destination="OKA",
-                depart_date=depart_date,
-                return_date=return_date,
-            )
-        return results
+        """向後相容包裝：查詢台灣主要機場往返 OKA 基準價。"""
+        target_origins = origins or ["TPE", "KHH"]
+        route_results = await self.fetch_route_benchmarks(
+            origins=target_origins,
+            destinations=["OKA"],
+            depart_date=depart_date,
+            return_date=return_date,
+            max_stops=0,
+        )
+        return {
+            org: route_results[f"{org}-OKA"]
+            for org in target_origins
+            if f"{org}-OKA" in route_results
+        }

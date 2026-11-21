@@ -1,0 +1,56 @@
+trip_id: "korea_spring2027"
+trip_name: "2027 春季韓國賞櫻親子團"
+enabled: false
+
+destination:
+  country: "韓國"
+  region_name: "首爾/釜山"
+  search_keywords:
+    - "首爾"
+    - "釜山"
+    - "韓國"
+  exclude_keywords:
+    - "機加酒"
+  airports:
+    - "ICN"
+    - "PUS"
+  shopping_stop_keywords:
+    - "人蔘"
+    - "保肝"
+    - "彩妝"
+    - "免稅店"
+    - "購物站"
+
+schedule:
+  departure_date_start: "2027-03-25"
+  departure_date_end: "2027-04-15"
+  min_days: 4
+  max_days: 6
+  is_peak_season: true
+  peak_season_label: "2027 春季櫻花季"
+
+flight_benchmark:
+  enabled: true
+  origins:
+    - "TPE"
+    - "KHH"
+  sample_depart_date: "2027-04-02"
+  sample_return_date: "2027-04-06"
+  max_stops: 0
+
+party:
+  family_profile_ref: "config/family_profile.yaml"
+  child_bed_age_threshold: 6
+  tip_per_day_twd: 300
+  target_total_budget_twd: 350000
+
+scoring_rules:
+  prefer_direct_flight: 10
+  avoid_shopping_stop_bonus: 20
+  no_hotel_change_bonus: 10
+  early_out_late_back_bonus: 10
+  prefer_guaranteed_departure_bonus: 8
+  kid_friendly_attraction_bonus: 8
+  senior_restriction_penalty: -5
+  too_many_self_paid_meals_penalty: -5
+  below_budget_bonus: 10

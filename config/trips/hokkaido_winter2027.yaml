@@ -1,0 +1,54 @@
+trip_id: "hokkaido_winter2027"
+trip_name: "2027 冬季北海道雪祭家族團"
+enabled: false
+
+destination:
+  country: "日本"
+  region_name: "北海道"
+  search_keywords:
+    - "北海道"
+    - "札幌"
+    - "函館"
+  exclude_keywords:
+    - "自由行"
+  airports:
+    - "CTS"
+    - "HKD"
+  shopping_stop_keywords:
+    - "免稅店"
+    - "光伸"
+    - "購物站"
+
+schedule:
+  departure_date_start: "2027-01-20"
+  departure_date_end: "2027-02-28"
+  min_days: 5
+  max_days: 7
+  is_peak_season: true
+  peak_season_label: "2027 寒假與札幌雪祭"
+
+flight_benchmark:
+  enabled: true
+  origins:
+    - "TPE"
+    - "KHH"
+  sample_depart_date: "2027-02-04"
+  sample_return_date: "2027-02-10"
+  max_stops: 0
+
+party:
+  family_profile_ref: "config/family_profile.yaml"
+  child_bed_age_threshold: 6
+  tip_per_day_twd: 300
+  target_total_budget_twd: 550000
+
+scoring_rules:
+  prefer_direct_flight: 10
+  avoid_shopping_stop_bonus: 15
+  no_hotel_change_bonus: 10
+  early_out_late_back_bonus: 12
+  prefer_guaranteed_departure_bonus: 8
+  kid_friendly_attraction_bonus: 8
+  senior_restriction_penalty: -5
+  too_many_self_paid_meals_penalty: -5
+  below_budget_bonus: 10
