@@ -212,3 +212,23 @@ AI 回應：
 5. 實作 CLI 命令列工具 src/cli.py（init-db, list-trips, scan, diff, test-scrape）與 GitHub Actions 每日排程工作流 .github/workflows/monitor.yml。
 6. 實機測試多國抓取（北海道 812 筆、歐洲奧捷 115 筆、沖繩過濾 226 筆），初始 data/radar.db 資料庫建立並完成 WAL Checkpoint 合併。
 7. 單元與整合測試全數通過（45 passed），完成 Git 提交並推送到遠端儲存庫。
+--------------------------------------------------------------------------------
+[2026-11-24 16:17:00] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+用戶提問：
+1. 我要怎麼測試
+2. [截圖報錯] 在 C:\Users\klinlin 執行 .venv\Scripts\python 報錯「無法載入模組 '.venv'」
+3. [CLI 報錯] 執行 test-scrape 報錯「error: unrecognized arguments: --dest 沖繩」
+4. [路徑報錯] 執行 test-scrape 報錯「FileNotFoundError: 找不到設定檔：config\agencies.yaml」
+5. [抓取回報] 執行 test-scrape --agency lion --keyword 沖繩 取得 0 筆行程
+6. [實測截圖] 執行 test-scrape --agency lion --trip okinawa_lny2027 成功抓取 164 筆行程 (mode_a_xhr)
+7. 收工
+
+AI 回應：
+提供完整測試指南並排查 CLI 執行環境問題：
+1. 說明 4 種測試層級指令（pytest 單元測試、單社 test-scrape 實機抓取、完整 scan/diff 掃描入庫、FastAPI 本地啟動）。
+2. 排查並修正終端工作目錄問題：提醒使用者必須在 F:\Antigravity\TravelLtinerary 根目錄下執行，且 PowerShell 相對路徑執行需加 .\。
+3. 修正 CLI 參數名稱為 --keyword 或 --trip，並說明各參數定義。
+4. 說明純關鍵字因無日期區間可能查無團次，引導套用 --trip okinawa_lny2027 完整設定。
+5. 確認雄獅旅遊 XHR 成功解析回傳 164 筆沖繩團次，驗證爬蟲機制正常。
+6. 執行專案收工程序：更新對話記錄、推送到專案 GitHub、同步寫入 Google 雲端硬碟 Obsidian Vault (secondbrain) 並推送至 obsidian-vault GitHub。

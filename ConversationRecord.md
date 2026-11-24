@@ -147,3 +147,22 @@ otifier/ 支援 Discord、Telegram 雙管道自動切換。
 - **CLI & CI/CD**：實作 src/cli.py 與 .github/workflows/monitor.yml 自動排程。
 - **實機驗證**：北海道（812 筆）、歐洲奧捷（115 筆）、沖繩（226 筆）實機抓取寫入 data/radar.db。
 - **品質門禁**：45 項單元與整合測試全數 PASS。
+
+---
+### [2026-11-24 16:17:00] 用戶提問 / AI 回應
+
+**用戶提問：**
+1. 我要怎麼測試
+2. [截圖報錯] 終端機執行報錯「無法載入模組 '.venv'」
+3. [CLI 報錯] 執行 	est-scrape 報錯「unrecognized arguments: --dest 沖繩」
+4. [路徑報錯] 執行報錯「FileNotFoundError: 找不到設定檔：config\agencies.yaml」
+5. [抓取回報] 執行 	est-scrape --agency lion --keyword 沖繩 取得 0 筆行程
+6. [實測截圖] 執行 	est-scrape --agency lion --trip okinawa_lny2027 成功抓取 164 筆行程 (mode_a_xhr)
+7. 收工
+
+**AI 回應：**
+- **測試指南指引**：整理 4 種測試層級（pytest 單元測試、單社除錯 	est-scrape、完整掃描 scan/diff、FastAPI REST API）。
+- **環境與目錄修正**：排查並引導切換至專案根目錄 F:\Antigravity\TravelLtinerary，修正 PowerShell 路徑語法 .\.venv\...。
+- **CLI 參數校正**：修正參數為 --keyword 或 --trip，並說明加上 --trip okinawa_lny2027 可自動套用出發日期區間。
+- **爬蟲實機驗證**：確認雄獅旅遊線上 API 成功抓取 164 筆 2027 過年沖繩團次（未入庫乾跑）。
+- **收工歸檔**：同步對話紀錄至專案、Google 雲端硬碟 Obsidian 保險庫，並推送到遠端 GitHub。
