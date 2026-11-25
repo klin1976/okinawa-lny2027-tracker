@@ -263,6 +263,48 @@ class TourRepository:
                 rows = await cursor.fetchall()
                 return [dict(r) for r in rows]
 
+    async def get_all_snapshots_grouped(
+        self, tour_uids: Optional[List[str]] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """批次取得歷史價格快照並依 tour_uid 分組，避免儀表板匯出產生 N+1 查詢。"""
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        if tour_uids is not None and len(tour_uids) == 0:
+            return grouped
+
+        base_cols = (
+            "tour_uid, captured_at, adult_price, seats_available, "
+            "status, estimated_family_total"
+        )
+        async with self.get_connection() as db:
+            if tour_uids is None:
+                query = (
+                    f"SELECT {base_cols} FROM price_snapshots "
+                    "ORDER BY captured_at ASC, id ASC;"
+                )
+                async with db.execute(query) as cursor:
+                    rows = await cursor.fetchall()
+                for row in rows:
+                    item = dict(row)
+                    uid = item.pop("tour_uid")
+                    grouped.setdefault(uid, []).append(item)
+            else:
+                chunk_size = 500
+                for start in range(0, len(tour_uids), chunk_size):
+                    chunk = tour_uids[start : start + chunk_size]
+                    placeholders = ",".join("?" for _ in chunk)
+                    query = (
+                        f"SELECT {base_cols} FROM price_snapshots "
+                        f"WHERE tour_uid IN ({placeholders}) "
+                        "ORDER BY captured_at ASC, id ASC;"
+                    )
+                    async with db.execute(query, tuple(chunk)) as cursor:
+                        rows = await cursor.fetchall()
+                    for row in rows:
+                        item = dict(row)
+                        uid = item.pop("tour_uid")
+                        grouped.setdefault(uid, []).append(item)
+        return grouped
+
     async def is_alert_logged(self, alert_key: str) -> bool:
         query = "SELECT 1 FROM alert_logs WHERE alert_key = ? LIMIT 1;"
         async with self.get_connection() as db:

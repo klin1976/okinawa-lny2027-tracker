@@ -232,3 +232,30 @@ AI 回應：
 4. 說明純關鍵字因無日期區間可能查無團次，引導套用 --trip okinawa_lny2027 完整設定。
 5. 確認雄獅旅遊 XHR 成功解析回傳 164 筆沖繩團次，驗證爬蟲機制正常。
 6. 執行專案收工程序：更新對話記錄、推送到專案 GitHub、同步寫入 Google 雲端硬碟 Obsidian Vault (secondbrain) 並推送至 obsidian-vault GitHub。
+
+--------------------------------------------------------------------------------
+[2026-11-25 16:11:30] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+1. 開工，並參考 tech-training-radar 架構將本專案調整成網頁版本
+2. 啟動本機伺服器並以內建瀏覽器實際開啟驗證
+3. 解釋 Live API 控制列按鈕與 API Key / Gemini API Key 差異
+4. 升級為可自由挑選國家與地區，並輸入成人／兒童人數即時試算
+5. 實機動態掃描韓國／濟州島成功抓回 479 筆行程（總計 705 筆）
+6. 直接同步靜態檔並收工推上 GitHub
+
+【AI 回應】
+完成雙模式 Travel Radar 網頁版與動態多目的地／人數試算升級，並執行收工同步：
+1. 【雙模式網頁架構 (Static GitHub Pages + Live FastAPI)】
+   - 實作 src/web/exporter.py 與 src/db/repository.py#get_all_snapshots_grouped 批次匯出儀表板資料。
+   - 建立零編譯深色雷達儀表板（web/index.html、web/styles.css、web/app.js），支援自動偵測 /api/v1/dashboard（Live API）與降級讀取 ./data/dashboard.json（Static Snapshot）。
+   - 擴充 src/main.py（GET /api/v1/dashboard、StaticFiles 掛載與 Cache-Control: no-cache）及 src/cli.py（build-web、serve、scan --build-web）。
+   - 更新 .github/workflows/monitor.yml 排程自動建置 web/data/dashboard.json 與可選 GitHub Pages 部署。
+2. 【國家／地區雙層挑選器與成人／兒童人數即時試算】
+   - 建立 src/web/catalog.py，內建日本、韓國、東南亞、歐洲、紐澳美加 23 個地區目錄並合併 config/trips/*.yaml。
+   - 擴充 POST /api/v1/pipeline/daily-run 與 POST /api/v1/extract/single 支援動態 country/region_name、日期天數與成人／兒童佔床／兒童不佔床／嬰兒人數覆寫。
+   - 前端新增目的地挑選列、成人／兒童即時重算引擎（毫秒級重算總預算、人均費用、機位充足度與費用拆解表）及 API Key 儲存即時驗證機制。
+3. 【實機測試與靜態匯出】
+   - 全庫單元與整合測試 52/52 PASS（tests/test_web_dashboard.py 等）。
+   - 本機實機動態掃描韓國／濟州島抓回 479 筆，連同沖繩 226 筆共計 705 筆活躍團次；已完成 WAL Checkpoint 並匯出 web/data/dashboard.json（2,296,672 bytes）。
+   - 更新對話紀錄與 Obsidian 保險庫，並提交推送至 GitHub 遠端儲存庫。

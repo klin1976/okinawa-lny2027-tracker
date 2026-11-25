@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Travel Radar — 多目的地旅遊跨社比價與異動監控雷達</title>
+  <link rel="stylesheet" href="./styles.css?v=20261125b" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="radar-icon" aria-hidden="true">
+          <span class="radar-ring"></span>
+          <span class="radar-core"></span>
+        </div>
+        <div>
+          <h1>Travel Radar <span class="brand-sub">跨社比價與異動監控雷達</span></h1>
+          <div class="meta-line">
+            <span id="mode-badge" class="mode-badge mode-loading">連線偵測中...</span>
+            <span id="last-run-text" class="meta-text">最後更新：--</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="btn-refresh" class="btn btn-secondary" type="button" title="重新載入儀表板資料">
+          🔄 重新整理
+        </button>
+        <div id="live-controls" class="live-controls hidden">
+          <button id="btn-api-key" class="btn btn-secondary" type="button">
+            🔑 API Key <span id="key-status-dot" class="key-dot"></span>
+          </button>
+          <button id="btn-run-scan" class="btn btn-primary" type="button">
+            ⚡ 立即掃描
+          </button>
+          <button id="btn-extract-single" class="btn btn-accent" type="button">
+            🔗 網址試算
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Error / Status Banner -->
+    <div id="global-banner" class="banner hidden" role="status"></div>
+
+    <!-- Destination & Party Configurator -->
+    <section class="planner-panel" aria-label="目的地與同行人數設定">
+      <div class="planner-block planner-destination">
+        <div class="planner-block-header">
+          <span class="planner-title">🌏 挑選國家與地區</span>
+          <button id="btn-scan-destination" class="btn btn-primary btn-sm hidden" type="button">
+            ⚡ 掃描此地區
+          </button>
+        </div>
+        <div class="planner-controls-row">
+          <div class="filter-group">
+            <label for="select-country">國家 / 區域</label>
+            <select id="select-country">
+              <option value="">全部國家</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="select-region">旅遊地區</label>
+            <select id="select-region">
+              <option value="">全部地區</option>
+            </select>
+          </div>
+          <div id="custom-region-wrap" class="filter-group filter-search hidden">
+            <label for="input-custom-region">自訂地區關鍵字</label>
+            <input
+              id="input-custom-region"
+              type="text"
+              placeholder="輸入城市或景點（如：石垣島、立山黑部）"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="planner-block planner-party">
+        <div class="planner-block-header">
+          <span class="planner-title">👨‍👩‍👧‍👦 同行人數即時試算</span>
+          <div class="party-header-right">
+            <span id="party-summary-pill" class="party-summary-pill">--</span>
+            <button id="btn-reset-party" class="btn-link" type="button">↺ 恢復預設</button>
+          </div>
+        </div>
+        <div class="party-inputs-grid">
+          <div class="party-input-item">
+            <label for="party-adults">成人 <span class="age-hint">含長輩</span></label>
+            <input id="party-adults" type="number" min="1" max="50" value="2" />
+          </div>
+          <div class="party-input-item">
+            <label for="party-child-bed">兒童佔床 <span id="hint-child-bed-age" class="age-hint">≥6歲</span></label>
+            <input id="party-child-bed" type="number" min="0" max="30" value="0" />
+          </div>
+          <div class="party-input-item">
+            <label for="party-child-nobed">兒童不佔床 <span class="age-hint">2~5歲</span></label>
+            <input id="party-child-nobed" type="number" min="0" max="30" value="0" />
+          </div>
+          <div class="party-input-item">
+            <label for="party-infants">嬰兒 <span class="age-hint">&lt;2歲</span></label>
+            <input id="party-infants" type="number" min="0" max="20" value="0" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trip Switcher Bar -->
+    <section class="trip-bar" aria-label="旅遊專案切換">
+      <div id="trip-tabs" class="trip-tabs"></div>
+    </section>
+
+    <!-- KPI Cards -->
+    <section class="kpi-grid" aria-label="核心指標摘要">
+      <article class="kpi-card">
+        <div class="kpi-label">活躍團次總數</div>
+        <div id="kpi-total-tours" class="kpi-value">--</div>
+        <div id="kpi-total-sub" class="kpi-sub">載入中</div>
+      </article>
+      <article class="kpi-card">
+        <div id="kpi-min-budget-label" class="kpi-label">最低真實總預算</div>
+        <div id="kpi-min-budget" class="kpi-value kpi-highlight">--</div>
+        <div id="kpi-min-budget-sub" class="kpi-sub">--</div>
+      </article>
+      <article class="kpi-card">
+        <div class="kpi-label">達標且機位充足</div>
+        <div id="kpi-qualified" class="kpi-value kpi-success">--</div>
+        <div id="kpi-qualified-sub" class="kpi-sub">--</div>
+      </article>
+      <article class="kpi-card">
+        <div class="kpi-label">近期價格 / 機位異動</div>
+        <div id="kpi-diffs" class="kpi-value kpi-warn">--</div>
+        <div id="kpi-diffs-sub" class="kpi-sub">快照比對時間軸</div>
+      </article>
+    </section>
+
+    <!-- Main Navigation Tabs -->
+    <nav class="main-tabs" aria-label="儀表板分頁">
+      <button class="main-tab active" data-tab="rankings" type="button">
+        🏆 跨社比價排行 <span id="tab-count-rankings" class="tab-pill">0</span>
+      </button>
+      <button class="main-tab" data-tab="diffs" type="button">
+        📡 異動時間軸 <span id="tab-count-diffs" class="tab-pill">0</span>
+      </button>
+      <button class="main-tab" data-tab="scans" type="button">
+        🩺 爬蟲健康紀錄 <span id="tab-count-scans" class="tab-pill">0</span>
+      </button>
+    </nav>
+
+    <!-- Tab 1: Rankings -->
+    <main id="panel-rankings" class="tab-panel active">
+      <section class="filter-toolbar" aria-label="篩選與排序條件">
+        <div class="filter-group">
+          <label for="filter-agency">旅行社</label>
+          <select id="filter-agency">
+            <option value="">全部旅行社</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="filter-airport">出發機場</label>
+          <select id="filter-airport">
+            <option value="">全部機場</option>
+            <option value="TPE">TPE 桃園</option>
+            <option value="KHH">KHH 高雄</option>
+            <option value="RMQ">RMQ 台中</option>
+            <option value="TSA">TSA 松山</option>
+            <option value="OTHER">OTHER 其他</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="filter-sort">排序方式</label>
+          <select id="filter-sort">
+            <option value="score_desc">綜合評分高 → 低</option>
+            <option value="budget_asc">預估總價低 → 高</option>
+            <option value="adult_asc">成人價低 → 高</option>
+            <option value="date_asc">出發日近 → 遠</option>
+          </select>
+        </div>
+
+        <div class="filter-group filter-search">
+          <label for="filter-keyword">關鍵字</label>
+          <input
+            id="filter-keyword"
+            type="search"
+            placeholder="搜尋團名、團號、標籤..."
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="filter-toggles">
+          <label class="toggle-chip">
+            <input id="toggle-sufficient" type="checkbox" />
+            <span>僅看機位充足</span>
+          </label>
+          <label class="toggle-chip">
+            <input id="toggle-no-shopping" type="checkbox" />
+            <span>僅看無購物站</span>
+          </label>
+          <label class="toggle-chip">
+            <input id="toggle-within-budget" type="checkbox" />
+            <span>目標預算內</span>
+          </label>
+        </div>
+      </section>
+
+      <div class="table-meta-bar">
+        <span id="filtered-count-text">顯示 0 筆行程</span>
+        <button id="btn-reset-filters" class="btn-link" type="button">重設篩選</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="ranking-table">
+          <thead>
+            <tr>
+              <th>評分</th>
+              <th>旅行社</th>
+              <th>行程名稱 / 標籤</th>
+              <th>出發 / 天數 / 機場</th>
+              <th class="num">成人單價</th>
+              <th id="th-total-budget" class="num">預估真實總預算</th>
+              <th>機位 / 狀態</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="rankings-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="rankings-empty" class="empty-state hidden">
+        目前篩選條件下沒有符合的行程，請放寬條件、切換其他國家/地區，或在 Live 模式點擊上方「⚡ 掃描此地區」立即抓團。
+      </div>
+
+      <div id="load-more-wrap" class="load-more-wrap hidden">
+        <button id="btn-show-all" class="btn btn-secondary" type="button">顯示全部筆數</button>
+      </div>
+    </main>
+
+    <!-- Tab 2: Recent Diffs -->
+    <section id="panel-diffs" class="tab-panel">
+      <div id="diffs-list" class="diffs-list"></div>
+      <div id="diffs-empty" class="empty-state hidden">
+        近期尚無新上架、降價或機位釋出異動紀錄。
+      </div>
+    </section>
+
+    <!-- Tab 3: Scan History -->
+    <section id="panel-scans" class="tab-panel">
+      <div class="table-wrapper">
+        <table class="ranking-table scan-table">
+          <thead>
+            <tr>
+              <th>掃描時間</th>
+              <th>旅遊專案</th>
+              <th>執行旅行社</th>
+              <th class="num">發現筆數</th>
+              <th class="num">新團</th>
+              <th class="num">降價</th>
+              <th class="num">釋出機位</th>
+              <th class="num">狀態變更</th>
+              <th>異常訊息</th>
+            </tr>
+          </thead>
+          <tbody id="scans-tbody"></tbody>
+        </table>
+      </div>
+      <div id="scans-empty" class="empty-state hidden">
+        尚無掃描巡檢紀錄。
+      </div>
+    </section>
+  </div>
+
+  <!-- Detail Drawer -->
+  <div id="drawer-backdrop" class="drawer-backdrop hidden" aria-hidden="true"></div>
+  <aside id="detail-drawer" class="detail-drawer hidden" aria-label="行程預算與歷史明細">
+    <div class="drawer-header">
+      <div>
+        <div id="drawer-agency-badge" class="agency-badge">--</div>
+        <h2 id="drawer-title">行程明細</h2>
+        <div id="drawer-subtitle" class="drawer-subtitle">--</div>
+      </div>
+      <button id="btn-close-drawer" class="icon-btn" type="button" aria-label="關閉明細">✕</button>
+    </div>
+
+    <div class="drawer-body">
+      <div class="drawer-summary-grid">
+        <div class="drawer-stat">
+          <span class="stat-label">預估真實總預算</span>
+          <strong id="drawer-grand-total" class="stat-value">--</strong>
+        </div>
+        <div class="drawer-stat">
+          <span class="stat-label">平均每人花費</span>
+          <strong id="drawer-avg-person" class="stat-value">--</strong>
+        </div>
+        <div class="drawer-stat">
+          <span class="stat-label">綜合評分</span>
+          <strong id="drawer-score" class="stat-value">--</strong>
+        </div>
+        <div class="drawer-stat">
+          <span class="stat-label">剩餘機位 / 狀態</span>
+          <strong id="drawer-seats" class="stat-value">--</strong>
+        </div>
+      </div>
+
+      <div id="drawer-actions-row" class="drawer-actions-row">
+        <a id="drawer-external-link" class="btn btn-primary" href="#" target="_blank" rel="noopener noreferrer">
+          🌐 前往旅行社原頁面
+        </a>
+        <span id="drawer-parsed-at" class="meta-text"></span>
+      </div>
+
+      <section class="drawer-section">
+        <h3>💰 同行成員與費用明細</h3>
+        <div class="table-wrapper">
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>項目 / 角色</th>
+                <th class="num">人數</th>
+                <th class="num">單價</th>
+                <th class="num">小計</th>
+                <th>計價說明</th>
+              </tr>
+            </thead>
+            <tbody id="drawer-breakdown-tbody"></tbody>
+          </table>
+        </div>
+        <div id="drawer-assumptions" class="notes-box hidden"></div>
+        <div id="drawer-warnings" class="notes-box warnings-box hidden"></div>
+      </section>
+
+      <section class="drawer-section">
+        <h3>📋 規則評估與標籤</h3>
+        <div id="drawer-rules-content" class="rules-grid"></div>
+      </section>
+
+      <section class="drawer-section">
+        <h3>📈 價格與機位歷史走勢</h3>
+        <div id="drawer-chart-wrap" class="chart-wrap">
+          <canvas id="drawer-chart"></canvas>
+        </div>
+        <div id="drawer-chart-note" class="chart-note"></div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- Modal: API Key -->
+  <div id="modal-api-key" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-key-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-key-title">🔑 設定本機 Live API Key</h3>
+        <button class="icon-btn modal-close" data-close="modal-api-key" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          看盤瀏覽無需驗證；僅觸發「立即掃描」與「單頁網址試算」需攜帶 <code>.env</code> 中設定的 <code>API_KEY</code>，儲存於瀏覽器 <code>localStorage</code>。
+        </p>
+        <div class="form-field">
+          <label for="input-api-key">X-API-Key</label>
+          <input id="input-api-key" type="password" placeholder="輸入 .env 中的 API_KEY（預設 changeme）" />
+        </div>
+        <div id="api-key-feedback" class="modal-feedback hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-clear-api-key" class="btn btn-secondary" type="button">清除金鑰</button>
+        <button id="btn-save-api-key" class="btn btn-primary" type="button">儲存設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Live Scan -->
+  <div id="modal-scan" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-scan-title">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <h3 id="modal-scan-title">⚡ 觸發即時巡檢掃描</h3>
+        <button class="icon-btn modal-close" data-close="modal-scan" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="scan-mode-switch" role="radiogroup" aria-label="掃描模式">
+          <label class="toggle-chip">
+            <input type="radio" name="scan-mode" value="trip" checked />
+            <span>依已存專案掃描</span>
+          </label>
+          <label class="toggle-chip">
+            <input type="radio" name="scan-mode" value="dynamic" />
+            <span>依國家與地區動態掃描</span>
+          </label>
+        </div>
+
+        <div id="scan-trip-fields">
+          <div class="form-field">
+            <label for="scan-trip-select">目標旅遊專案</label>
+            <select id="scan-trip-select"></select>
+          </div>
+        </div>
+
+        <div id="scan-dynamic-fields" class="hidden">
+          <div class="form-row-2">
+            <div class="form-field">
+              <label for="scan-country-input">國家 / 區域</label>
+              <input id="scan-country-input" type="text" placeholder="例如：日本、韓國、歐洲" />
+            </div>
+            <div class="form-field">
+              <label for="scan-region-input">地區 / 關鍵字</label>
+              <input id="scan-region-input" type="text" placeholder="例如：九州、東京/關東" />
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-field">
+              <label for="scan-date-start">最早出發日期</label>
+              <input id="scan-date-start" type="date" />
+            </div>
+            <div class="form-field">
+              <label for="scan-date-end">最晚出發日期</label>
+              <input id="scan-date-end" type="date" />
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-field">
+              <label for="scan-min-days">最少天數</label>
+              <input id="scan-min-days" type="number" min="1" max="30" value="4" />
+            </div>
+            <div class="form-field">
+              <label for="scan-max-days">最多天數</label>
+              <input id="scan-max-days" type="number" min="1" max="30" value="6" />
+            </div>
+          </div>
+        </div>
+
+        <div id="scan-party-preview" class="notes-box" style="margin-bottom:12px;"></div>
+
+        <div class="form-checks">
+          <label class="toggle-chip">
+            <input id="scan-skip-flights" type="checkbox" checked />
+            <span>略過 Google Flights 基準查詢（較快）</span>
+          </label>
+          <label class="toggle-chip">
+            <input id="scan-force-reparse" type="checkbox" />
+            <span>強制忽略 7 天快取重新 LLM 解析</span>
+          </label>
+          <label id="scan-save-trip-wrap" class="toggle-chip hidden">
+            <input id="scan-save-trip" type="checkbox" />
+            <span>同時儲存為常用專案 YAML (<code>config/trips/</code>)</span>
+          </label>
+        </div>
+        <div class="form-field">
+          <label for="scan-max-details">單次最多 LLM 解析新詳情頁數</label>
+          <input id="scan-max-details" type="number" min="0" max="50" value="0" />
+        </div>
+        <div id="scan-feedback" class="modal-feedback hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-close" data-close="modal-scan" type="button">取消</button>
+        <button id="btn-submit-scan" class="btn btn-primary" type="button">開始執行掃描</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Extract Single URL -->
+  <div id="modal-extract" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-extract-title">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <h3 id="modal-extract-title">🔗 單頁網址 LLM 解析與家族試算</h3>
+        <button class="icon-btn modal-close" data-close="modal-extract" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          貼上任意旅行社行程詳情頁網址，即時使用 Crawl4AI + LLM 提取團費條件並依目前輸入人數進行試算。
+        </p>
+        <div class="form-field">
+          <label for="extract-url-input">行程詳情頁網址</label>
+          <input id="extract-url-input" type="url" placeholder="https://travel.liontravel.com/detail?..." />
+        </div>
+        <div class="form-row-2">
+          <div class="form-field">
+            <label for="extract-agency-select">旅行社提示（選填）</label>
+            <select id="extract-agency-select">
+              <option value="">自動判斷</option>
+              <option value="雄獅旅遊">雄獅旅遊</option>
+              <option value="可樂旅遊">可樂旅遊</option>
+              <option value="東南旅遊">東南旅遊</option>
+              <option value="山富旅遊">山富旅遊</option>
+              <option value="世邦旅遊">世邦旅遊</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="extract-trip-select">套用專案規則（選填）</label>
+            <select id="extract-trip-select">
+              <option value="">使用預設家族設定</option>
+            </select>
+          </div>
+        </div>
+        <div id="extract-feedback" class="modal-feedback hidden"></div>
+        <div id="extract-result" class="extract-result hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-close" data-close="modal-extract" type="button">關閉</button>
+        <button id="btn-submit-extract" class="btn btn-accent" type="button">解析並試算</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js?v=20261125b"></script>
+</body>
+</html>

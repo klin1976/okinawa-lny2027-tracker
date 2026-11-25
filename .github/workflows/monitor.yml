@@ -92,14 +92,45 @@ jobs:
           fi
           python -m src.cli scan $ARGS
 
-      - name: Commit and Push Updated SQLite Database
+      - name: Build Static Web Dashboard Data
+        run: |
+          python -m src.cli build-web --db-path data/radar.db --output web/data/dashboard.json
+
+      - name: Commit and Push Updated SQLite Database & Web Data
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/radar.db
+          git add data/radar.db web/data/dashboard.json
           if git diff --cached --quiet; then
-            echo "No DB changes to commit"
+            echo "No DB or web data changes to commit"
           else
-            git commit -m "🤖 [auto] Update travel radar database & snapshots"
+            git commit -m "🤖 [auto] Update travel radar database & dashboard data"
             git push
           fi
+
+  deploy-pages:
+    needs: scan-and-notify
+    if: needs.scan-and-notify.result == 'success'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout Latest Code
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Web Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

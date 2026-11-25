@@ -42,6 +42,7 @@ from src.notifier.webhook import send_webhook_digest, send_webhook_notifications
 from src.schemas.budget_schema import AlertEvent, RankedTourResult  # noqa: E402
 from src.schemas.trip_schema import TripConfig  # noqa: E402
 from src.services.pipeline_service import PipelineService  # noqa: E402
+from src.web.exporter import export_dashboard_json  # noqa: E402
 
 try:
     from rich.console import Console
@@ -216,6 +217,16 @@ async def _run_scan_async(args: argparse.Namespace) -> int:
             overall_exit = 1
 
     await checkpoint_db(db_path)
+    if getattr(args, "build_web", False):
+        web_summary = await export_dashboard_json(
+            output_path=args.web_output,
+            db_path=db_path,
+            trips_dir=args.trips_dir,
+        )
+        print(
+            f"🌐 已同步更新靜態儀表板資料: {web_summary['output_path']} "
+            f"({web_summary['total_active_tours']} 筆行程)"
+        )
     return overall_exit
 
 
@@ -294,6 +305,51 @@ def cmd_test_scrape(args: argparse.Namespace) -> int:
     return asyncio.run(_run_test_scrape_async(args))
 
 
+async def _run_build_web_async(args: argparse.Namespace) -> int:
+    db_path = _resolve_db_path(args.db_path)
+    summary = await export_dashboard_json(
+        output_path=args.output,
+        db_path=db_path,
+        trips_dir=args.trips_dir,
+        diff_hours=args.diff_hours,
+    )
+    print(
+        f"\n🌐 靜態網頁儀表板資料匯出完成：{summary['output_path']}\n"
+        f"   - 專案數：{summary['trips_count']} | 活躍團次：{summary['total_active_tours']} "
+        f"| 近期異動：{summary['diffs_count']} | 檔案大小：{summary['bytes_written']:,} bytes\n"
+    )
+    return 0
+
+
+def cmd_build_web(args: argparse.Namespace) -> int:
+    return asyncio.run(_run_build_web_async(args))
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    """啟動本機 FastAPI 伺服器並掛載網頁儀表板。"""
+    import uvicorn
+
+    if args.db_path:
+        os.environ["DATABASE_PATH"] = args.db_path
+        get_settings.cache_clear()
+
+    resolved_db = _resolve_db_path(args.db_path)
+    display_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+    print(
+        f"\n🚀 啟動 Travel Radar Live Web 伺服器...\n"
+        f"   👉 儀表板網址：http://{display_host}:{args.port}\n"
+        f"   👉 API 文件：  http://{display_host}:{args.port}/docs\n"
+        f"   👉 資料庫路徑：{resolved_db}\n"
+    )
+    uvicorn.run(
+        "src.main:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="travel-radar",
@@ -327,6 +383,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--force-reparse", action="store_true", help="強制忽略 7 天快取並重新解析詳情")
     p_scan.add_argument("--max-details", type=int, default=None, help="單次最多解析新詳情頁數量上限")
     p_scan.add_argument("--db-path", default=None, help="資料庫路徑 (預設 data/radar.db)")
+    p_scan.add_argument("--build-web", action="store_true", help="掃描完成後順便匯出 web/data/dashboard.json")
+    p_scan.add_argument("--web-output", default="web/data/dashboard.json", help="靜態儀表板 JSON 輸出路徑")
     p_scan.set_defaults(func=cmd_scan)
 
     # diff
@@ -350,6 +408,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_test.add_argument("--keyword", default=None, help="自訂搜尋關鍵字（未指定 --trip 時使用）")
     p_test.add_argument("--no-playwright", action="store_true", help="停用 Playwright 降級")
     p_test.set_defaults(func=cmd_test_scrape)
+
+    # build-web
+    p_web = subparsers.add_parser("build-web", help="將 SQLite 資料匯出為靜態網頁儀表板 JSON")
+    p_web.add_argument("--db-path", default=None, help="資料庫路徑 (預設 data/radar.db)")
+    p_web.add_argument("--trips-dir", default="config/trips", help="旅遊專案設定目錄")
+    p_web.add_argument("--output", default="web/data/dashboard.json", help="輸出 JSON 路徑")
+    p_web.add_argument("--diff-hours", type=int, default=168, help="匯出過去幾小時內的異動紀錄 (預設 168)")
+    p_web.set_defaults(func=cmd_build_web)
+
+    # serve
+    p_serve = subparsers.add_parser("serve", help="啟動本機 FastAPI Live 網頁儀表板")
+    p_serve.add_argument("--host", default="127.0.0.1", help="監聽位址 (預設 127.0.0.1)")
+    p_serve.add_argument("--port", type=int, default=8000, help="監聽埠號 (預設 8000)")
+    p_serve.add_argument("--reload", action="store_true", help="啟用開發自動重載")
+    p_serve.add_argument("--db-path", default=None, help="指定資料庫路徑 (預設讀 .env 或 data/radar.db)")
+    p_serve.set_defaults(func=cmd_serve)
 
     return parser
 

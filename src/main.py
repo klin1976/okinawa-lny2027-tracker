@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import hmac
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.calculator.budget_engine import BudgetEngine
@@ -17,6 +19,8 @@ from src.schemas.budget_schema import RankedTourResult
 from src.schemas.tour_schema import PricingDetail, TourPackage
 from src.schemas.trip_schema import TripConfig
 from src.services.pipeline_service import PipelineService
+from src.web.catalog import build_dynamic_trip_config, build_party_members
+from src.web.exporter import build_dashboard_payload
 
 
 @asynccontextmanager
@@ -32,6 +36,15 @@ app = FastAPI(
     description="通用多目的地旅遊跨社比價與異動監控雷達 API（選配 Web 服務層）",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def add_static_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".html", ".css", ".js")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 def verify_api_key(
@@ -69,6 +82,17 @@ class DailyRunRequest(BaseModel):
         default=False,
         description="是否略過 fast-flights 同期機票基準查詢",
     )
+    country: Optional[str] = Field(default=None, description="動態指定目的地國家（如 日本、韓國、歐洲）")
+    region_name: Optional[str] = Field(default=None, description="動態指定目的地地區（如 九州、東京/關東）")
+    departure_date_start: Optional[str] = Field(default=None, description="動態出發起始日 YYYY-MM-DD")
+    departure_date_end: Optional[str] = Field(default=None, description="動態出發結束日 YYYY-MM-DD")
+    min_days: Optional[int] = Field(default=None, ge=1, le=30, description="動態最少天數")
+    max_days: Optional[int] = Field(default=None, ge=1, le=30, description="動態最多天數")
+    adults: Optional[int] = Field(default=None, ge=0, le=50, description="成人人數")
+    children_with_bed: Optional[int] = Field(default=None, ge=0, le=30, description="兒童佔床人數")
+    children_no_bed: Optional[int] = Field(default=None, ge=0, le=30, description="兒童不佔床人數")
+    infants: Optional[int] = Field(default=None, ge=0, le=20, description="嬰兒人數（未滿2歲）")
+    save_as_trip: bool = Field(default=False, description="是否將動態條件另存為 config/trips YAML")
 
 
 class ExtractSingleRequest(BaseModel):
@@ -81,6 +105,10 @@ class ExtractSingleRequest(BaseModel):
         default=None,
         description="選填：套用的旅遊專案 ID（以套用對應國家的佔床與小費規則）",
     )
+    adults: Optional[int] = Field(default=None, ge=0, le=50, description="成人人數")
+    children_with_bed: Optional[int] = Field(default=None, ge=0, le=30, description="兒童佔床人數")
+    children_no_bed: Optional[int] = Field(default=None, ge=0, le=30, description="兒童不佔床人數")
+    infants: Optional[int] = Field(default=None, ge=0, le=20, description="嬰兒人數（未滿2歲）")
 
 
 @app.get("/health")
@@ -133,11 +161,44 @@ async def run_daily_pipeline(
     """主排程進入點：依序執行清單抓取、增量詳情解析、機票基準、家族預算試算與告警偵測。"""
     settings = get_settings()
     trip_cfg: Optional[TripConfig] = None
+    has_party_override = any(
+        val is not None
+        for val in (
+            payload.adults,
+            payload.children_with_bed,
+            payload.children_no_bed,
+            payload.infants,
+        )
+    )
+
     if payload.trip_id:
         try:
             trip_cfg = load_trip_config(payload.trip_id, trips_dir=settings.trips_dir)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        if has_party_override:
+            trip_cfg.party.members = build_party_members(
+                adults=payload.adults if payload.adults is not None else 2,
+                children_with_bed=payload.children_with_bed or 0,
+                children_no_bed=payload.children_no_bed or 0,
+                infants=payload.infants or 0,
+                child_bed_age_threshold=trip_cfg.party.child_bed_age_threshold,
+            )
+    elif payload.country and payload.region_name:
+        trip_cfg = build_dynamic_trip_config(
+            country=payload.country,
+            region_name=payload.region_name,
+            departure_date_start=payload.departure_date_start,
+            departure_date_end=payload.departure_date_end,
+            min_days=payload.min_days,
+            max_days=payload.max_days,
+            adults=payload.adults,
+            children_with_bed=payload.children_with_bed,
+            children_no_bed=payload.children_no_bed,
+            infants=payload.infants,
+            save_as_trip=payload.save_as_trip,
+            trips_dir=settings.trips_dir,
+        )
 
     service = PipelineService(settings=settings, trip_config=trip_cfg)
     return await service.run_daily_pipeline(
@@ -159,6 +220,24 @@ async def extract_single_tour(payload: ExtractSingleRequest) -> Dict[str, Any]:
         except FileNotFoundError as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
+    has_party_override = any(
+        val is not None
+        for val in (
+            payload.adults,
+            payload.children_with_bed,
+            payload.children_no_bed,
+            payload.infants,
+        )
+    )
+    if trip_cfg is not None and has_party_override:
+        trip_cfg.party.members = build_party_members(
+            adults=payload.adults if payload.adults is not None else 2,
+            children_with_bed=payload.children_with_bed or 0,
+            children_no_bed=payload.children_no_bed or 0,
+            infants=payload.infants or 0,
+            child_bed_age_threshold=trip_cfg.party.child_bed_age_threshold,
+        )
+
     crawler = DetailCrawler(settings=settings)
     try:
         if trip_cfg is not None:
@@ -175,7 +254,22 @@ async def extract_single_tour(payload: ExtractSingleRequest) -> Dict[str, Any]:
             detail=str(exc),
         ) from exc
 
-    engine = BudgetEngine(trip_cfg) if trip_cfg is not None else BudgetEngine()
+    if trip_cfg is not None:
+        engine = BudgetEngine(trip_cfg)
+    elif has_party_override:
+        base_engine = BudgetEngine()
+        profile = dict(base_engine.profile)
+        profile["members"] = build_party_members(
+            adults=payload.adults if payload.adults is not None else 2,
+            children_with_bed=payload.children_with_bed or 0,
+            children_no_bed=payload.children_no_bed or 0,
+            infants=payload.infants or 0,
+            child_bed_age_threshold=base_engine.child_bed_age_threshold,
+        )
+        engine = BudgetEngine(profile)
+    else:
+        engine = BudgetEngine()
+
     budget = engine.calculate(tour)
     eval_res = RuleEvaluator.evaluate(tour, budget, trip_config=trip_cfg)
     budget.composite_score = eval_res.score
@@ -357,3 +451,21 @@ async def get_tour_history(tour_uid: str) -> Dict[str, Any]:
         "detail_parsed_at": tour["detail_parsed_at"],
         "price_snapshots": snapshots,
     }
+
+
+@app.get("/api/v1/dashboard")
+async def get_dashboard(
+    diff_hours: int = Query(default=168, ge=1, le=720, description="異動時間軸查詢小時數"),
+) -> Dict[str, Any]:
+    """唯讀儀表板端點（無須驗證）：即時輸出與靜態 dashboard.json 相同結構。"""
+    settings = get_settings()
+    return await build_dashboard_payload(
+        db_path=settings.database_path,
+        trips_dir=settings.trips_dir,
+        diff_hours=diff_hours,
+    )
+
+
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+if WEB_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")

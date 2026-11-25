@@ -166,3 +166,21 @@ otifier/ 支援 Discord、Telegram 雙管道自動切換。
 - **CLI 參數校正**：修正參數為 --keyword 或 --trip，並說明加上 --trip okinawa_lny2027 可自動套用出發日期區間。
 - **爬蟲實機驗證**：確認雄獅旅遊線上 API 成功抓取 164 筆 2027 過年沖繩團次（未入庫乾跑）。
 - **收工歸檔**：同步對話紀錄至專案、Google 雲端硬碟 Obsidian 保險庫，並推送到遠端 GitHub。
+
+
+---
+### [2026-11-25 16:11:30] 用戶提問 / AI 回應
+
+**用戶提問：**
+1. 開工，並參考 `tech-training-radar` 架構調整成網頁版本
+2. 啟動本機伺服器並以內建瀏覽器開啟驗證
+3. 解釋 Live API 控制列按鈕與 `API_KEY` / `GEMINI_API_KEY` 差異
+4. 升級為可自由挑選國家與地區，並輸入成人／兒童人數即時試算
+5. 實機動態掃描韓國／濟州島抓回 479 筆行程（總計 705 筆）
+6. 直接同步靜態檔並收工推上 GitHub
+
+**AI 回應：**
+- **雙模式網頁儀表板**：新增 `src/web/exporter.py`、`web/` 零編譯深色 SPA、`src/main.py` (`GET /api/v1/dashboard` + `StaticFiles`) 與 `src/cli.py` (`build-web` / `serve` / `scan --build-web`)，並更新 `.github/workflows/monitor.yml` 自動匯出與 Pages 部署。
+- **國家／地區與成人／兒童即時試算**：建立 `src/web/catalog.py`（23 個熱門地區目錄與動態 `TripConfig` 建構），擴充後端 API 支援動態掃描與人數覆寫，前端實作毫秒級即時重算與 API Key 即時驗證。
+- **實機與測試驗證**：全庫測試 52/52 PASS；實機動態掃描韓國／濟州島成功寫入 479 筆（全庫共 705 筆活躍團次），完成 WAL Checkpoint 並匯出 `web/data/dashboard.json`（2,296,672 bytes）。
+- **收工歸檔**：更新對話紀錄、同步至 Obsidian 保險庫，並推送最新變更至 GitHub 遠端儲存庫。

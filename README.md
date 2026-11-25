@@ -53,6 +53,20 @@ python -m src.cli diff --hours 24
 python -m src.cli test-scrape --agency lion --trip okinawa_lny2027
 ```
 
+### 3. 網頁版雷達儀表板（靜態 Pages + 本機 Live 雙模式）
+```bash
+# 模式 A：本機啟動即時 Web 儀表板（http://127.0.0.1:8000）
+# 支援唯讀看盤免 Key、即時觸發掃描與單頁網址試算（需在網頁輸入 .env 的 API_KEY）
+python -m src.cli serve
+
+# 模式 B：匯出靜態儀表板資料（web/data/dashboard.json），供 GitHub Pages 免費代管瀏覽
+python -m src.cli build-web
+# 或於掃描時自動刷新靜態資料：
+python -m src.cli scan --all --build-web
+```
+
+> 💡 若將 Repository 設為 Public（或具備 GitHub Pro），於 GitHub **Settings → Pages → Build and deployment → Source** 選擇 **GitHub Actions**，每次排程巡檢後會自動部署靜態網頁。
+
 ---
 
 ## 🌍 新增旅遊目的地教學 (`config/trips/*.yaml`)
@@ -84,10 +98,10 @@ python -m src.cli test-scrape --agency lion --trip okinawa_lny2027
 
 | 層級 | 模組與技術 | 說明 |
 |---|---|---|
-| CLI 入口 | `src/cli.py` | `init-db` / `list-trips` / `scan` / `diff` / `test-scrape` |
+| CLI 入口 | `src/cli.py` | `init-db` / `list-trips` / `scan` / `diff` / `test-scrape` / `build-web` / `serve` |
 | 上游擷取 | `src/discovery/` (`httpx` + Playwright 混合) | `httpx` Direct XHR/SSR 優先，必要時降級 Playwright |
 | 詳情與機票 | `src/extractor/` (`Crawl4AI` + `fast-flights`) | 動態國家 Prompt、7 天 LLM 快取、多航線與轉機基準 |
 | 試算與評估 | `src/calculator/` + `src/evaluator/` | `BudgetEngine`、`RuleEvaluator` (0~100 評分)、`AlertDetector`、`DiffEngine` |
 | 持久化與審計 | `src/db/` (SQLite WAL + `checkpoint_db`) | `tours`、`price_snapshots` (事件驅動)、`flight_benchmarks`、`alert_logs`、`scan_history` |
 | 通知與報表 | `src/notifier/` (`Rich` / `tabulate` + Webhook) | Discord + Telegram 緊急警報與 `--digest` 每日健康心跳 |
-| 選配 Web API | `src/main.py` (FastAPI + Docker) | 提供 `/api/v1/trips`、`/api/v1/rankings?trip_id=` 等 REST 端點 |
+| 網頁與 API | `web/` + `src/web/` + `src/main.py` | 雙模式深色雷達儀表板（GitHub Pages 靜態 JSON + 本機 FastAPI Live API） |
