@@ -184,3 +184,18 @@ otifier/ 支援 Discord、Telegram 雙管道自動切換。
 - **國家／地區與成人／兒童即時試算**：建立 `src/web/catalog.py`（23 個熱門地區目錄與動態 `TripConfig` 建構），擴充後端 API 支援動態掃描與人數覆寫，前端實作毫秒級即時重算與 API Key 即時驗證。
 - **實機與測試驗證**：全庫測試 52/52 PASS；實機動態掃描韓國／濟州島成功寫入 479 筆（全庫共 705 筆活躍團次），完成 WAL Checkpoint 並匯出 `web/data/dashboard.json`（2,296,672 bytes）。
 - **收工歸檔**：更新對話紀錄、同步至 Obsidian 保險庫，並推送最新變更至 GitHub 遠端儲存庫。
+
+
+---
+### [2026-11-25 20:14:00] 用戶提問 / AI 回應
+
+**用戶提問：**
+1. 詢問公開測試網址並要求公開專案與部署 GitHub Pages
+2. 詢問公開網頁為何為 Static 模式並比較三種 Live/雲端方案優缺點
+3. 採用方案 1（手機網頁一鍵觸發 GitHub Actions 抓任意國家／地區）
+4. 收工
+
+**AI 回應：**
+- **GitHub Pages 上線**：建立 `.github/workflows/pages.yml`，公開儲存庫並完成部署（`https://klin1976.github.io/okinawa-lny2027-tracker/`）。
+- **方案 1 雲端隨選抓團**：擴充 `src/cli.py` 動態地區參數、建立 `.github/workflows/cloud_scan.yml`、前端加入雲端 Token 驗證與進度輪詢自動重整。
+- **驗證與收工**：全庫測試 53/53 PASS；更新 `README.md` 與對話紀錄，並同步推送至本專案與 Obsidian 保險庫 GitHub。

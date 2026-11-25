@@ -259,3 +259,22 @@ AI 回應：
    - 全庫單元與整合測試 52/52 PASS（tests/test_web_dashboard.py 等）。
    - 本機實機動態掃描韓國／濟州島抓回 479 筆，連同沖繩 226 筆共計 705 筆活躍團次；已完成 WAL Checkpoint 並匯出 web/data/dashboard.json（2,296,672 bytes）。
    - 更新對話紀錄與 Obsidian 保險庫，並提交推送至 GitHub 遠端儲存庫。
+
+--------------------------------------------------------------------------------
+[2026-11-25 20:14:00] 用戶提問 / AI 回應
+--------------------------------------------------------------------------------
+【用戶提問】
+1. 詢問是否有公開網址可測試，並要求公開專案與部署 GitHub Pages
+2. 詢問為何公開網頁無法挑選 Live 模式，並要求比較三個方案優缺點
+3. 拍板採用方案 1（手機網頁一鍵觸發 GitHub Actions 抓任意國家／地區）
+4. 收工
+
+【AI 回應】
+完成 GitHub Pages 公開部署與方案 1「雲端隨選抓團」全鏈路落地：
+1. 【公開儲存庫與 GitHub Pages 上線】
+   - 確認 .env / .env.bak 未被追蹤後將儲存庫設為 Public，建立 .github/workflows/pages.yml 並成功部署至 https://klin1976.github.io/okinawa-lny2027-tracker/（HTTP 200 OK）。
+2. 【方案 1：手機網頁一鍵觸發 GitHub Actions 抓團】
+   - 擴充 src/cli.py scan 支援 --country / --region / --date-start / --date-end / --min-days / --max-days / --save-trip。
+   - 建立 .github/workflows/cloud_scan.yml 隨選爬蟲與 Pages 部署工作流，並於 pages.yml / cloud_scan.yml / monitor.yml 加入 Artifact 索引等待機制。
+   - 前端 web/ 新增「🔑 雲端 Token」、「☁️ 雲端抓團」與「☁️ 雲端掃描此地區」元件，支援 GitHub Fine-grained PAT 驗證與每 8 秒進度輪詢自動重整。
+   - 全庫測試 53/53 PASS，更新 README.md 與對話紀錄並同步推送至本專案與 Obsidian 保險庫 GitHub。
