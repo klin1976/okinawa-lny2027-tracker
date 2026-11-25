@@ -1,0 +1,146 @@
+name: Travel Radar On-Demand Cloud Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      country:
+        description: '目的地國家 / 區域（例如：日本、韓國、東南亞、自訂）'
+        required: false
+        default: '自訂'
+      region:
+        description: '目的地地區或關鍵字（例如：泰國曼谷、九州、東京/關東）'
+        required: true
+      date_start:
+        description: '最早出發日期 YYYY-MM-DD（留空則預設 30 天後）'
+        required: false
+        default: ''
+      date_end:
+        description: '最晚出發日期 YYYY-MM-DD（留空則預設 90 天後）'
+        required: false
+        default: ''
+      min_days:
+        description: '最少天數'
+        required: false
+        default: '4'
+      max_days:
+        description: '最多天數'
+        required: false
+        default: '6'
+      no_playwright:
+        description: '是否僅用快速模式（略過 Playwright 降級，速度較快）'
+        type: boolean
+        default: true
+      save_trip:
+        description: '是否另存為 config/trips/*.yaml 常用專案'
+        type: boolean
+        default: false
+
+jobs:
+  cloud-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Cache Playwright Browsers
+        if: ${{ inputs.no_playwright != true }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('requirements.txt') }}
+
+      - name: Install Playwright Chromium (When Fallback Enabled)
+        if: ${{ inputs.no_playwright != true }}
+        run: |
+          playwright install --with-deps chromium
+
+      - name: Initialize / Migrate Database
+        run: |
+          python -m src.cli init-db --db-path data/radar.db
+
+      - name: Run Dynamic Cloud Scan
+        env:
+          DATABASE_PATH: data/radar.db
+          INPUT_COUNTRY: ${{ inputs.country }}
+          INPUT_REGION: ${{ inputs.region }}
+          INPUT_DATE_START: ${{ inputs.date_start }}
+          INPUT_DATE_END: ${{ inputs.date_end }}
+          INPUT_MIN_DAYS: ${{ inputs.min_days }}
+          INPUT_MAX_DAYS: ${{ inputs.max_days }}
+        run: |
+          set -- python -m src.cli scan --db-path data/radar.db --skip-llm --skip-flights --build-web
+          set -- "$@" --country "${INPUT_COUNTRY:-自訂}" --region "$INPUT_REGION"
+          if [ -n "$INPUT_DATE_START" ]; then
+            set -- "$@" --date-start "$INPUT_DATE_START"
+          fi
+          if [ -n "$INPUT_DATE_END" ]; then
+            set -- "$@" --date-end "$INPUT_DATE_END"
+          fi
+          if [ -n "$INPUT_MIN_DAYS" ]; then
+            set -- "$@" --min-days "$INPUT_MIN_DAYS"
+          fi
+          if [ -n "$INPUT_MAX_DAYS" ]; then
+            set -- "$@" --max-days "$INPUT_MAX_DAYS"
+          fi
+          if [ "${{ inputs.no_playwright }}" = "true" ]; then
+            set -- "$@" --no-playwright
+          fi
+          if [ "${{ inputs.save_trip }}" = "true" ]; then
+            set -- "$@" --save-trip
+          fi
+          "$@"
+
+      - name: Commit and Push Updated Database & Web Data
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/radar.db web/data/dashboard.json
+          if [ "${{ inputs.save_trip }}" = "true" ]; then
+            git add config/trips/
+          fi
+          if git diff --cached --quiet; then
+            echo "No DB or web data changes to commit"
+          else
+            git commit -m "🤖 [cloud-scan] Update radar database & dashboard data"
+            git push
+          fi
+
+  deploy-pages:
+    needs: cloud-scan
+    if: needs.cloud-scan.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout Latest Code
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Web Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

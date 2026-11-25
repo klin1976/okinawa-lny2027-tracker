@@ -1071,7 +1071,8 @@ body {
   padding: 16px;
 }
 
-#modal-api-key {
+#modal-api-key,
+#modal-gh-token {
   z-index: 70;
 }
 

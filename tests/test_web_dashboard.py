@@ -277,3 +277,67 @@ def test_api_daily_run_with_dynamic_destination_and_party(tmp_path, monkeypatch)
             assert captured["skip_flight_benchmark"] is True
     finally:
         get_settings.cache_clear()
+
+
+def test_cli_scan_with_dynamic_country_and_region(tmp_path, monkeypatch):
+    db_file = str(tmp_path / "cli_dyn_scan.db")
+    out_file = tmp_path / "dyn_dashboard.json"
+    assert cli.main(["init-db", "--db-path", db_file]) == 0
+
+    captured = {}
+
+    class FakePipelineService:
+        def __init__(self, settings, repository=None, trip_config=None, allow_playwright_fallback=True):
+            captured["trip_config"] = trip_config
+            captured["allow_playwright_fallback"] = allow_playwright_fallback
+
+        async def run_daily_pipeline(self, **_kwargs):
+            return {
+                "status": "ok",
+                "rankings": [],
+                "alerts": [],
+                "stats": {
+                    "total_discovered": 0,
+                    "snapshots_inserted": 0,
+                    "alerts_count": 0,
+                    "agencies": {},
+                },
+            }
+
+    monkeypatch.setattr("src.cli.PipelineService", FakePipelineService)
+
+    exit_code = cli.main(
+        [
+            "scan",
+            "--db-path",
+            db_file,
+            "--country",
+            "東南亞",
+            "--region",
+            "泰國曼谷",
+            "--date-start",
+            "2027-05-01",
+            "--date-end",
+            "2027-05-15",
+            "--min-days",
+            "5",
+            "--max-days",
+            "6",
+            "--no-playwright",
+            "--skip-llm",
+            "--skip-flights",
+            "--build-web",
+            "--web-output",
+            str(out_file),
+        ]
+    )
+    assert exit_code == 0
+    cfg = captured["trip_config"]
+    assert cfg is not None
+    assert cfg.destination.country == "東南亞"
+    assert cfg.destination.region_name == "泰國曼谷"
+    assert cfg.schedule.departure_date_start == "2027-05-01"
+    assert cfg.schedule.min_days == 5
+    assert cfg.schedule.max_days == 6
+    assert captured["allow_playwright_fallback"] is False
+    assert out_file.exists()

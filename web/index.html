@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Travel Radar — 多目的地旅遊跨社比價與異動監控雷達</title>
-  <link rel="stylesheet" href="./styles.css?v=20261125b" />
+  <link rel="stylesheet" href="./styles.css?v=20261125c" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
@@ -38,6 +38,14 @@
           </button>
           <button id="btn-extract-single" class="btn btn-accent" type="button">
             🔗 網址試算
+          </button>
+        </div>
+        <div id="static-cloud-controls" class="live-controls hidden">
+          <button id="btn-gh-token" class="btn btn-secondary" type="button">
+            🔑 雲端 Token <span id="gh-token-dot" class="key-dot"></span>
+          </button>
+          <button id="btn-cloud-scan" class="btn btn-primary" type="button">
+            ☁️ 雲端抓團
           </button>
         </div>
       </div>
@@ -504,6 +512,94 @@
     </div>
   </div>
 
-  <script type="module" src="./app.js?v=20261125b"></script>
+  <!-- Modal: GitHub Cloud Token -->
+  <div id="modal-gh-token" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-gh-token-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-gh-token-title">🔑 設定 GitHub 雲端觸發 Token</h3>
+        <button class="icon-btn modal-close" data-close="modal-gh-token" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          手機或靜態網頁免開電腦，直接透過 GitHub Actions 雲端抓任意國家／地區。請至 GitHub 申請 Fine-grained PAT（僅勾選本 Repository 並授予 <code>Actions: Read and write</code>），儲存於本機 <code>localStorage</code>。
+        </p>
+        <div class="form-field">
+          <label for="input-gh-repo">GitHub Repository (owner/repo)</label>
+          <input id="input-gh-repo" type="text" placeholder="klin1976/okinawa-lny2027-tracker" />
+        </div>
+        <div class="form-field">
+          <label for="input-gh-token">GitHub Fine-grained Token (PAT)</label>
+          <input id="input-gh-token" type="password" placeholder="github_pat_..." />
+        </div>
+        <div id="gh-token-feedback" class="modal-feedback hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-clear-gh-token" class="btn btn-secondary" type="button">清除 Token</button>
+        <button id="btn-save-gh-token" class="btn btn-primary" type="button">驗證並儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cloud Scan (GitHub Actions workflow_dispatch) -->
+  <div id="modal-cloud-scan" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-cloud-scan-title">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <h3 id="modal-cloud-scan-title">☁️ 雲端排程抓團（GitHub Actions）</h3>
+        <button class="icon-btn modal-close" data-close="modal-cloud-scan" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          無需開著家裡電腦！送出後將由 GitHub 雲端伺服器自動執行爬蟲、更新 <code>data/radar.db</code> 並重新發佈本網頁，約 1～2 分鐘自動刷新。
+        </p>
+        <div class="form-row-2">
+          <div class="form-field">
+            <label for="cloud-country-input">國家 / 區域</label>
+            <input id="cloud-country-input" type="text" placeholder="例如：東南亞、日本、自訂" />
+          </div>
+          <div class="form-field">
+            <label for="cloud-region-input">地區 / 搜尋關鍵字（必填）</label>
+            <input id="cloud-region-input" type="text" placeholder="例如：泰國曼谷、九州、東京" />
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field">
+            <label for="cloud-date-start">最早出發日期</label>
+            <input id="cloud-date-start" type="date" />
+          </div>
+          <div class="form-field">
+            <label for="cloud-date-end">最晚出發日期</label>
+            <input id="cloud-date-end" type="date" />
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field">
+            <label for="cloud-min-days">最少天數</label>
+            <input id="cloud-min-days" type="number" min="1" max="30" value="4" />
+          </div>
+          <div class="form-field">
+            <label for="cloud-max-days">最多天數</label>
+            <input id="cloud-max-days" type="number" min="1" max="30" value="6" />
+          </div>
+        </div>
+        <div class="form-checks">
+          <label class="toggle-chip">
+            <input id="cloud-no-playwright" type="checkbox" checked />
+            <span>快速模式（略過 Playwright 瀏覽器，約 30~60 秒完成）</span>
+          </label>
+          <label class="toggle-chip">
+            <input id="cloud-save-trip" type="checkbox" />
+            <span>同時儲存為常用專案 YAML（<code>config/trips/</code>）</span>
+          </label>
+        </div>
+        <div id="cloud-scan-feedback" class="modal-feedback hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-close" data-close="modal-cloud-scan" type="button">關閉</button>
+        <button id="btn-submit-cloud-scan" class="btn btn-primary" type="button">🚀 啟動雲端抓團</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js?v=20261125c"></script>
 </body>
 </html>

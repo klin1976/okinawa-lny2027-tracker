@@ -42,6 +42,7 @@ from src.notifier.webhook import send_webhook_digest, send_webhook_notifications
 from src.schemas.budget_schema import AlertEvent, RankedTourResult  # noqa: E402
 from src.schemas.trip_schema import TripConfig  # noqa: E402
 from src.services.pipeline_service import PipelineService  # noqa: E402
+from src.web.catalog import build_dynamic_trip_config  # noqa: E402
 from src.web.exporter import export_dashboard_json  # noqa: E402
 
 try:
@@ -128,7 +129,19 @@ async def _run_scan_async(args: argparse.Namespace) -> int:
 
     # 決定要掃描的旅遊專案清單
     target_trips: List[TripConfig] = []
-    if args.trip and args.trip.strip().lower() != "all":
+    if getattr(args, "region", None):
+        dynamic_cfg = build_dynamic_trip_config(
+            country=args.country or "自訂",
+            region_name=args.region,
+            departure_date_start=args.date_start,
+            departure_date_end=args.date_end,
+            min_days=args.min_days,
+            max_days=args.max_days,
+            save_as_trip=bool(args.save_trip),
+            trips_dir=args.trips_dir,
+        )
+        target_trips.append(dynamic_cfg)
+    elif args.trip and args.trip.strip().lower() != "all":
         target_trips.append(load_trip_config(args.trip.strip(), trips_dir=args.trips_dir))
     else:
         target_trips = list_trip_configs(trips_dir=args.trips_dir, enabled_only=True)
@@ -383,6 +396,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--force-reparse", action="store_true", help="強制忽略 7 天快取並重新解析詳情")
     p_scan.add_argument("--max-details", type=int, default=None, help="單次最多解析新詳情頁數量上限")
     p_scan.add_argument("--db-path", default=None, help="資料庫路徑 (預設 data/radar.db)")
+    p_scan.add_argument("--country", default=None, help="動態指定國家（須搭配 --region）")
+    p_scan.add_argument("--region", default=None, help="動態指定地區或關鍵字（如 泰國曼谷、九州）")
+    p_scan.add_argument("--date-start", default=None, help="動態掃描最早出發日期 YYYY-MM-DD")
+    p_scan.add_argument("--date-end", default=None, help="動態掃描最晚出發日期 YYYY-MM-DD")
+    p_scan.add_argument("--min-days", type=int, default=None, help="動態掃描最少天數")
+    p_scan.add_argument("--max-days", type=int, default=None, help="動態掃描最多天數")
+    p_scan.add_argument("--save-trip", action="store_true", help="將動態條件另存為 config/trips/*.yaml")
     p_scan.add_argument("--build-web", action="store_true", help="掃描完成後順便匯出 web/data/dashboard.json")
     p_scan.add_argument("--web-output", default="web/data/dashboard.json", help="靜態儀表板 JSON 輸出路徑")
     p_scan.set_defaults(func=cmd_scan)

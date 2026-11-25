@@ -1,4 +1,6 @@
 const API_KEY_STORAGE = "travel_radar_api_key";
+const GH_TOKEN_STORAGE = "travel_radar_gh_token";
+const GH_REPO_STORAGE = "travel_radar_gh_repo";
 const PARTY_STORAGE = "travel_radar_party";
 const PAGE_LIMIT_INITIAL = 100;
 
@@ -98,6 +100,28 @@ function updateKeyIndicator() {
   const dot = document.getElementById("key-status-dot");
   if (!dot) return;
   dot.classList.toggle("configured", Boolean(getStoredApiKey()));
+}
+
+function detectDefaultGhRepo() {
+  const saved = localStorage.getItem(GH_REPO_STORAGE);
+  if (saved) return saved;
+  const host = window.location.hostname || "";
+  if (host.endsWith(".github.io")) {
+    const owner = host.split(".")[0];
+    const seg = (window.location.pathname || "/").split("/").filter(Boolean)[0];
+    if (owner && seg) return `${owner}/${seg}`;
+  }
+  return "klin1976/okinawa-lny2027-tracker";
+}
+
+function getStoredGhToken() {
+  return localStorage.getItem(GH_TOKEN_STORAGE) || "";
+}
+
+function updateGhTokenIndicator() {
+  const dot = document.getElementById("gh-token-dot");
+  if (!dot) return;
+  dot.classList.toggle("configured", Boolean(getStoredGhToken()));
 }
 
 function showBanner(message, isError = false) {
@@ -420,7 +444,7 @@ async function loadDashboardData() {
   }
 
   try {
-    const staticPayload = await fetchJsonWithTimeout("./data/dashboard.json", 5000);
+    const staticPayload = await fetchJsonWithTimeout(`./data/dashboard.json?t=${Date.now()}`, 5000);
     if (staticPayload && Array.isArray(staticPayload.tours)) {
       state.mode = "STATIC";
       state.data = staticPayload;
@@ -451,21 +475,25 @@ async function loadDashboardData() {
 function applyLoadedData() {
   const modeBadge = document.getElementById("mode-badge");
   const liveControls = document.getElementById("live-controls");
+  const staticCloudControls = document.getElementById("static-cloud-controls");
   const lastRunText = document.getElementById("last-run-text");
 
   if (state.mode === "LIVE") {
     modeBadge.className = "mode-badge mode-live";
     modeBadge.textContent = "LIVE API";
     liveControls.classList.remove("hidden");
+    staticCloudControls?.classList.add("hidden");
   } else {
     modeBadge.className = "mode-badge mode-static";
     modeBadge.textContent = "STATIC SNAPSHOT";
     liveControls.classList.add("hidden");
+    staticCloudControls?.classList.remove("hidden");
   }
 
   const ts = state.data.last_run_at || state.data.generated_at;
   lastRunText.textContent = `資料時間：${formatDateTime(ts)}`;
   updateKeyIndicator();
+  updateGhTokenIndicator();
   initPartyFromStorageOrDefault();
   populateCountrySelector();
   populateRegionSelector();
@@ -538,7 +566,8 @@ function updateScanDestinationButton() {
   const hasRegion =
     (state.selectedCountry && state.selectedCountry !== "__CUSTOM__" && state.selectedRegion && state.selectedRegion !== "__CUSTOM__") ||
     (state.selectedRegion === "__CUSTOM__" && state.customRegionKeyword.trim().length > 0);
-  btn.classList.toggle("hidden", !(state.mode === "LIVE" && hasRegion));
+  btn.textContent = state.mode === "LIVE" ? "⚡ 掃描此地區" : "☁️ 雲端掃描此地區";
+  btn.classList.toggle("hidden", !hasRegion);
 }
 
 function getTripConfigMap() {
@@ -1479,7 +1508,11 @@ function bindEvents() {
   });
 
   document.getElementById("btn-scan-destination").addEventListener("click", () => {
-    openScanModalWithScope(true);
+    if (state.mode === "LIVE") {
+      openScanModalWithScope(true);
+    } else {
+      openCloudScanModal();
+    }
   });
 
   // Party inputs
@@ -1760,6 +1793,297 @@ function bindEvents() {
       btn.disabled = false;
     }
   });
+
+  // GitHub Cloud Token modal
+  document.getElementById("btn-gh-token")?.addEventListener("click", () => {
+    document.getElementById("input-gh-repo").value = detectDefaultGhRepo();
+    document.getElementById("input-gh-token").value = getStoredGhToken();
+    document.getElementById("gh-token-feedback").classList.add("hidden");
+    openModal("modal-gh-token");
+  });
+
+  document.getElementById("btn-clear-gh-token")?.addEventListener("click", () => {
+    localStorage.removeItem(GH_TOKEN_STORAGE);
+    document.getElementById("input-gh-token").value = "";
+    updateGhTokenIndicator();
+    setFeedback("gh-token-feedback", "已清除儲存的 GitHub Token。", "info");
+  });
+
+  document.getElementById("btn-save-gh-token")?.addEventListener("click", async () => {
+    const repo = document.getElementById("input-gh-repo").value.trim();
+    const token = document.getElementById("input-gh-token").value.trim();
+    if (!repo || !repo.includes("/")) {
+      setFeedback("gh-token-feedback", "請輸入正確的 Repository 格式（owner/repo）。", "error");
+      return;
+    }
+    if (!token) {
+      setFeedback("gh-token-feedback", "請輸入有效的 GitHub PAT。", "error");
+      return;
+    }
+
+    const saveBtn = document.getElementById("btn-save-gh-token");
+    saveBtn.disabled = true;
+    setFeedback("gh-token-feedback", "正在向 GitHub API 驗證權限...", "info");
+    try {
+      const resp = await fetch(
+        `https://api.github.com/repos/${repo}/actions/workflows/cloud_scan.yml`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        }
+      );
+      if (resp.status === 401 || resp.status === 403) {
+        setFeedback(
+          "gh-token-feedback",
+          `權限驗證失敗 (HTTP ${resp.status})，請確認 Token 有效且已勾選 Actions: Read and write。`,
+          "error"
+        );
+        return;
+      }
+      if (resp.status === 404) {
+        setFeedback(
+          "gh-token-feedback",
+          `找不到 ${repo} 或 cloud_scan.yml（請確認 Repo 名稱或 Token 是否有權限存取）。`,
+          "error"
+        );
+        return;
+      }
+      if (!resp.ok) {
+        setFeedback("gh-token-feedback", `驗證失敗：HTTP ${resp.status}`, "error");
+        return;
+      }
+      localStorage.setItem(GH_REPO_STORAGE, repo);
+      localStorage.setItem(GH_TOKEN_STORAGE, token);
+      updateGhTokenIndicator();
+      setFeedback("gh-token-feedback", "驗證通過！Token 已儲存於本機 localStorage。", "success");
+    } catch (err) {
+      setFeedback("gh-token-feedback", `無法連線至 GitHub API：${err.message}`, "error");
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  // Cloud Scan modal
+  document.getElementById("btn-cloud-scan")?.addEventListener("click", openCloudScanModal);
+  document.getElementById("btn-submit-cloud-scan")?.addEventListener("click", triggerCloudScan);
+}
+
+let cloudPollTimer = null;
+
+function openCloudScanModal() {
+  document.getElementById("cloud-scan-feedback").classList.add("hidden");
+  const today = new Date();
+  const start = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+  const end = new Date(today.getTime() + 90 * 86400000).toISOString().slice(0, 10);
+  if (!document.getElementById("cloud-date-start").value) {
+    document.getElementById("cloud-date-start").value = start;
+  }
+  if (!document.getElementById("cloud-date-end").value) {
+    document.getElementById("cloud-date-end").value = end;
+  }
+
+  const countryVal =
+    state.selectedCountry === "__CUSTOM__" ? "自訂" : state.selectedCountry || "自訂";
+  const regionVal =
+    state.selectedRegion === "__CUSTOM__"
+      ? state.customRegionKeyword.trim()
+      : state.selectedRegion || "";
+  document.getElementById("cloud-country-input").value = countryVal;
+  document.getElementById("cloud-region-input").value = regionVal;
+
+  const meta = findRegionMeta(countryVal, regionVal);
+  if (meta) {
+    document.getElementById("cloud-min-days").value = String(meta.default_min_days || 4);
+    document.getElementById("cloud-max-days").value = String(meta.default_max_days || 6);
+  }
+  openModal("modal-cloud-scan");
+}
+
+function setFeedbackHtml(elId, html, kind = "info") {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = html;
+  el.classList.remove("hidden", "is-error", "is-success");
+  if (kind === "error") el.classList.add("is-error");
+  if (kind === "success") el.classList.add("is-success");
+}
+
+async function triggerCloudScan() {
+  const token = getStoredGhToken();
+  const repo = detectDefaultGhRepo();
+  if (!token) {
+    openModal("modal-gh-token");
+    setFeedback(
+      "gh-token-feedback",
+      "請先設定具備 Actions: Read and write 權限的 GitHub Token。",
+      "error"
+    );
+    return;
+  }
+
+  const country = document.getElementById("cloud-country-input").value.trim() || "自訂";
+  const region = document.getElementById("cloud-region-input").value.trim();
+  if (!region) {
+    setFeedback("cloud-scan-feedback", "請輸入地區或搜尋關鍵字（例如：泰國曼谷）。", "error");
+    return;
+  }
+
+  const btn = document.getElementById("btn-submit-cloud-scan");
+  btn.disabled = true;
+  if (cloudPollTimer) {
+    clearInterval(cloudPollTimer);
+    cloudPollTimer = null;
+  }
+
+  const dispatchedAtMs = Date.now();
+  setFeedback("cloud-scan-feedback", "正在送出雲端爬蟲任務至 GitHub Actions...", "info");
+
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/${repo}/actions/workflows/cloud_scan.yml/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        body: JSON.stringify({
+          ref: "main",
+          inputs: {
+            country,
+            region,
+            date_start: document.getElementById("cloud-date-start").value || "",
+            date_end: document.getElementById("cloud-date-end").value || "",
+            min_days: String(document.getElementById("cloud-min-days").value || "4"),
+            max_days: String(document.getElementById("cloud-max-days").value || "6"),
+            no_playwright: document.getElementById("cloud-no-playwright").checked,
+            save_trip: document.getElementById("cloud-save-trip").checked,
+          },
+        }),
+      }
+    );
+
+    if (resp.status === 401 || resp.status === 403) {
+      openModal("modal-gh-token");
+      setFeedback(
+        "gh-token-feedback",
+        `Token 權限不足 (HTTP ${resp.status})，請確認 Fine-grained PAT 具有 Actions: Read and write 權限。`,
+        "error"
+      );
+      setFeedback("cloud-scan-feedback", `觸發失敗：HTTP ${resp.status}`, "error");
+      btn.disabled = false;
+      return;
+    }
+
+    if (!resp.ok) {
+      const errBody = await resp.json().catch(() => ({}));
+      throw new Error(errBody.message || `HTTP ${resp.status}`);
+    }
+
+    setFeedback(
+      "cloud-scan-feedback",
+      `⏳ 已送出「${country} · ${region}」雲端抓團任務！正在等待 GitHub Runner 接單（約 1～2 分鐘）...`,
+      "info"
+    );
+    pollCloudScanStatus(repo, token, dispatchedAtMs, country, region, btn);
+  } catch (err) {
+    setFeedback("cloud-scan-feedback", `觸發失敗：${err.message}`, "error");
+    btn.disabled = false;
+  }
+}
+
+function pollCloudScanStatus(repo, token, dispatchedAtMs, country, region, btn) {
+  let attempts = 0;
+  const maxAttempts = 40;
+
+  const checkOnce = async () => {
+    attempts += 1;
+    try {
+      const resp = await fetch(
+        `https://api.github.com/repos/${repo}/actions/workflows/cloud_scan.yml/runs?event=workflow_dispatch&per_page=5&_=${Date.now()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+          cache: "no-store",
+        }
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const runs = data.workflow_runs || [];
+      const targetRun = runs.find(
+        (r) => new Date(r.created_at).getTime() >= dispatchedAtMs - 15000
+      );
+      if (!targetRun) {
+        if (attempts >= maxAttempts) {
+          clearInterval(cloudPollTimer);
+          cloudPollTimer = null;
+          btn.disabled = false;
+          setFeedback("cloud-scan-feedback", "輪詢逾時，請稍後手動按「🔄 重新整理」查看資料。", "info");
+        }
+        return;
+      }
+
+      const runLink = safeUrl(targetRun.html_url);
+      const linkHtml = runLink
+        ? ` <a href="${escapeHtml(runLink)}" target="_blank" rel="noopener noreferrer" style="color:#7dd3fc;">查看執行紀錄 ↗</a>`
+        : "";
+
+      if (targetRun.status !== "completed") {
+        const label =
+          targetRun.status === "queued"
+            ? "排隊等待 Runner 中"
+            : "雲端爬蟲與網頁部署執行中";
+        setFeedbackHtml(
+          "cloud-scan-feedback",
+          `⏳ 「${escapeHtml(country)} · ${escapeHtml(region)}」${label}... (${attempts * 8}s)${linkHtml}`,
+          "info"
+        );
+        if (attempts >= maxAttempts) {
+          clearInterval(cloudPollTimer);
+          cloudPollTimer = null;
+          btn.disabled = false;
+        }
+        return;
+      }
+
+      clearInterval(cloudPollTimer);
+      cloudPollTimer = null;
+      btn.disabled = false;
+
+      if (targetRun.conclusion === "success") {
+        setFeedbackHtml(
+          "cloud-scan-feedback",
+          `✅ 雲端抓團與部署成功！正在自動刷新頁面資料...${linkHtml}`,
+          "success"
+        );
+        await new Promise((r) => setTimeout(r, 3000));
+        await loadDashboardData();
+        setFeedbackHtml(
+          "cloud-scan-feedback",
+          `🎉 「${escapeHtml(country)} · ${escapeHtml(region)}」資料已同步至最新排行榜！${linkHtml}`,
+          "success"
+        );
+      } else {
+        setFeedbackHtml(
+          "cloud-scan-feedback",
+          `❌ 雲端執行結束（狀態：${escapeHtml(targetRun.conclusion || "failed")}）。${linkHtml}`,
+          "error"
+        );
+      }
+    } catch {
+      // keep polling silently on transient network glitches
+    }
+  };
+
+  cloudPollTimer = setInterval(checkOnce, 8000);
 }
 
 document.addEventListener("DOMContentLoaded", () => {

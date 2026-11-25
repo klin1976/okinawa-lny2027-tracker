@@ -67,6 +67,12 @@ python -m src.cli scan --all --build-web
 
 > 💡 若將 Repository 設為 Public（或具備 GitHub Pro），於 GitHub **Settings → Pages → Build and deployment → Source** 選擇 **GitHub Actions**，每次排程巡檢後會自動部署靜態網頁。
 
+### 4. 手機網頁雲端觸發 GitHub Actions 抓團（Fine-grained PAT 3 步驟）
+在公開的 GitHub Pages 網頁（`STATIC SNAPSHOT` 模式）可免開本機電腦，直接觸發 `.github/workflows/cloud_scan.yml` 抓取任意國家／地區：
+1. 至 GitHub **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**。
+2. **Repository access** 選 **Only select repositories**（僅選本專案），**Permissions → Repository permissions → Actions** 設為 **Read and write**。
+3. 開啟 GitHub Pages 網頁點右上角 **「🔑 雲端 Token」** 貼上並驗證儲存後，即可直接選地區點擊 **「☁️ 雲端抓團」**，約 1~2 分鐘自動抓團、寫入 `data/radar.db` 並刷新網頁。
+
 ---
 
 ## 🌍 新增旅遊目的地教學 (`config/trips/*.yaml`)
